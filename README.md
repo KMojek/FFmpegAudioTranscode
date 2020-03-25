@@ -1,2 +1,2 @@
 # FFmpegAudioTranscode
-C++ wrapper around FFmpeg audio decoding and resampling
+C++ wrapper around FFmpeg audio decoding and resampling. This is for when it makes sense to keep the decoded, possibly resampled, contents of an entire audio stream in memory. It does not support decoding "on the fly". In it's current state, it just trancodes a given file with an audio stream to an uncompressed WAV file (16-bit signed 44.1kHz stereo format). I'm currently buiiding on Windows in VS 2017 but the code should be cross-platform.
