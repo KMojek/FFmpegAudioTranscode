@@ -1,32 +1,53 @@
-# Prerequisites
-*.d
+# Visual Studio stuff
+.vs/
 
-# Compiled Object files
-*.slo
-*.lo
-*.o
+*_i.c
+*_i.h
+*_p.c
+*_h.h
+*.ilk
+*.meta
 *.obj
-
-# Precompiled Headers
-*.gch
 *.pch
+*.pdb
+*.pgc
+*.pgd
+*.rsp
+*.sbr
+*.tlb
+*.tli
+*.tlh
+*.tmp
+*.tmp_proj
+*.log
+*.vspscc
+*.vssscc
+.builds
+*.pidb
+*.svclog
+*.scc
+*.res
+*.VC.opendb
+*.vc.db
+*.vcxproj.user
 
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
+Debug/
+Release/
+Win32/
+x64/
+builds/
 
-# Fortran module files
-*.mod
-*.smod
+*.aps
+*.ncb
+*.opensdf
+*.sdf
+*.cachefile
 
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
+# NuGet stuff
+packages/
+*.nupkg
 
-# Executables
-*.exe
-*.out
-*.app
+# windows stuff
+Thumbs.db
+ehthumbs.db
+Desktop.ini
