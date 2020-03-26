@@ -84,6 +84,19 @@ int AudioResampler::convert( const uint8_t* leftPtr, const uint8_t* rightPtr, in
    return _numConverted;
 }
 
+int AudioResampler::convert( const uint8_t *nonPlanarPtr, int n )
+{
+   if ( _initState == NoInit )
+      initialize();
+   if ( _initState != Ok )
+      return 0;
+
+   int returnedSampleCount = n * _outputParams.sampleRate / _inputParams.sampleRate;
+   _numConverted = ::swr_convert( _swrContext, _dstData, returnedSampleCount, &nonPlanarPtr, n );
+
+   return _numConverted;
+}
+
 int AudioResampler::flush()
 {
    return ::swr_convert( _swrContext, _dstData, _maxReturnedSampleCount, nullptr, 0 );

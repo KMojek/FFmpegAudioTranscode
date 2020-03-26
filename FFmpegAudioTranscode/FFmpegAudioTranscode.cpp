@@ -2,7 +2,7 @@
 //
 
 #include "stdafx.h"
-#include "WavWriter.h"
+#include "WavUtil.h"
 
 #include <string>
 #include <vector>

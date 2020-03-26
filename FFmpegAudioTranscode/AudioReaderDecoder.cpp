@@ -2,6 +2,7 @@
 
 #include "AudioReaderDecoder.h"
 #include "AudioParams.h"
+#include "WavUtil.h"
 
 extern "C"
 {
@@ -69,7 +70,7 @@ AudioReaderDecoder::InitState AudioReaderDecoder::initialize()
    if ( status != 0 )
       SetStateAndReturn( OpenFails );
 
-   _streamIndex = findAudioStream( _formatContext );
+   _streamIndex = findAudioStream( _formatContext ) /*::av_find_best_stream( _formatContext, AVMEDIA_TYPE_AUDIO, -1, -1, &codec, 0 )*/;
    if ( _streamIndex == -1 )
       SetStateAndReturn( NoAudioStream );
 
@@ -80,6 +81,17 @@ AudioReaderDecoder::InitState AudioReaderDecoder::initialize()
    _codecContext = ::avcodec_alloc_context3( codec );
    if ( _codecContext == nullptr )
       SetStateAndReturn( CodecContextAllocFails );
+
+   // workaround for WAV decoding bug
+   if ( _formatContext->streams[_streamIndex]->codecpar->codec_id == AV_CODEC_ID_FIRST_AUDIO )
+   {
+      AudioParams params;
+      ReadWavAudioParams( _path, params );
+      _codecContext->sample_rate = params.sampleRate;
+      _codecContext->sample_fmt = params.sampleFormat;
+      _codecContext->channels = params.channelCount;
+      _codecContext->channel_layout = ( params.channelCount == 1 ) ? AV_CH_LAYOUT_MONO : AV_CH_LAYOUT_STEREO;
+   }
 
    status = ::avcodec_open2( _codecContext, codec, nullptr );
    if ( status != 0 )

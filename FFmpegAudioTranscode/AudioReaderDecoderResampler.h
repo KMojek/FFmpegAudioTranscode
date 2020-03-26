@@ -33,8 +33,10 @@ protected:
    std::unique_ptr<AudioResampler>     _resampler;
    std::vector<int16_t>                _leftChannel;
    std::vector<int16_t>                _rightChannel;
+   bool                                _isPlanar;
    std::unique_ptr<uint8_t[]>          _leftResampleBuff;
    std::unique_ptr<uint8_t[]>          _rightResampleBuff;
+   std::unique_ptr<uint8_t[]>          _nonPlanarResampleBuff;
    int                                 _numInResampleBuffer;
    int                                 _resampleBufferSampleCapacity;
    AudioParams                         _inputParams;

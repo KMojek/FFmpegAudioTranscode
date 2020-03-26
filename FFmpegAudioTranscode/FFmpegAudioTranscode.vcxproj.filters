@@ -21,7 +21,7 @@
     <ClInclude Include="targetver.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="WavWriter.h">
+    <ClInclude Include="WavUtil.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="AudioParams.h">
@@ -44,7 +44,7 @@
     <ClCompile Include="FFmpegAudioTranscode.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="WavWriter.cpp">
+    <ClCompile Include="WavUtil.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="AudioReaderDecoder.cpp">
