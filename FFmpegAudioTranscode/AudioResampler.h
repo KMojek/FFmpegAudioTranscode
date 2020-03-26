@@ -19,7 +19,7 @@ public:
    InitState initialize();
    InitState initState() const { return _initState; }
 
-   int convert( const float* leftPtr, const float* rightPtr, int n );
+   int convert( const uint8_t* leftPtr, const uint8_t* rightPtr, int n );
    int flush();
 
    int numConverted() const { return _numConverted; }

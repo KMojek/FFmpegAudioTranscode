@@ -20,7 +20,7 @@ int main( int argc, char **argv )
    AudioReaderDecoderResampler audioLoader( inputPath );
    if ( !audioLoader.loadAudioData() )
       return  -1;
- 
+
    std::vector< std::vector<int16_t> > data = {
       audioLoader.leftChannelData(),
       audioLoader.rightChannelData()

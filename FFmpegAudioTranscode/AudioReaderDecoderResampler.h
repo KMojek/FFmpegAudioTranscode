@@ -1,5 +1,7 @@
 #pragma once
 
+#include "AudioParams.h"
+
 #include <memory>
 #include <string>
 #include <vector>
@@ -31,8 +33,9 @@ protected:
    std::unique_ptr<AudioResampler>     _resampler;
    std::vector<int16_t>                _leftChannel;
    std::vector<int16_t>                _rightChannel;
-   std::unique_ptr<float[]>            _leftResampleBuff;
-   std::unique_ptr<float[]>            _rightResampleBuff;
+   std::unique_ptr<uint8_t[]>          _leftResampleBuff;
+   std::unique_ptr<uint8_t[]>          _rightResampleBuff;
    int                                 _numInResampleBuffer;
-   int                                 _resampleBufferSize;
+   int                                 _resampleBufferSampleCapacity;
+   AudioParams                         _inputParams;
 };

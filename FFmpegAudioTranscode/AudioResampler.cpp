@@ -9,7 +9,6 @@ extern "C"
 #include <libswresample/swresample.h>
 }
 
-
 AudioResampler::AudioResampler( const AudioParams& inputParams, int maxInSampleCount, const AudioParams& outputParams )
    : _inputParams( inputParams )
    , _maxInSampleCount( maxInSampleCount )
@@ -70,7 +69,7 @@ AudioResampler::InitState AudioResampler::initialize()
    SetStateAndReturn( Ok );
 }
 
-int AudioResampler::convert( const float* leftPtr, const float* rightPtr, int n )
+int AudioResampler::convert( const uint8_t* leftPtr, const uint8_t* rightPtr, int n )
 {
    if ( _initState == NoInit )
       initialize();
@@ -78,7 +77,7 @@ int AudioResampler::convert( const float* leftPtr, const float* rightPtr, int n 
       return 0;
 
    int returnedSampleCount = n * _outputParams.sampleRate / _inputParams.sampleRate;
-   const uint8_t *data[] = { (const uint8_t *)leftPtr, (const uint8_t *)rightPtr };
+   const uint8_t *data[] = { leftPtr, rightPtr };
 
    _numConverted = ::swr_convert( _swrContext, _dstData, returnedSampleCount, data, n );
 
