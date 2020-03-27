@@ -29,7 +29,7 @@ namespace
 
 AudioReaderDecoder::AudioReaderDecoder( const std::string& path )
    : _path( path )
-   , _initState( NoInit )
+   , _initState( AudioReaderDecoderInitState::NoInit )
    , _streamIndex( -1 )
    , _formatContext( nullptr )
    , _codecContext( nullptr )
@@ -57,30 +57,30 @@ AudioReaderDecoder::~AudioReaderDecoder()
    return a;       \
 }
 
-AudioReaderDecoder::InitState AudioReaderDecoder::initialize()
+AudioReaderDecoderInitState AudioReaderDecoder::initialize()
 {
-   if ( _initState != NoInit )
+   if ( _initState != AudioReaderDecoderInitState::NoInit )
       return _initState;
 
    _formatContext = ::avformat_alloc_context();
    if ( _formatContext == nullptr )
-      SetStateAndReturn( FormatContextAllocFails );
+      SetStateAndReturn( AudioReaderDecoderInitState::FormatContextAllocFails );
 
    int status = ::avformat_open_input( &_formatContext, _path.c_str(), nullptr, nullptr );
    if ( status != 0 )
-      SetStateAndReturn( OpenFails );
+      SetStateAndReturn( AudioReaderDecoderInitState::OpenFails );
 
    _streamIndex = findAudioStream( _formatContext ) /*::av_find_best_stream( _formatContext, AVMEDIA_TYPE_AUDIO, -1, -1, &codec, 0 )*/;
    if ( _streamIndex == -1 )
-      SetStateAndReturn( NoAudioStream );
+      SetStateAndReturn( AudioReaderDecoderInitState::NoAudioStream );
 
    AVCodec *codec = ::avcodec_find_decoder( _formatContext->streams[_streamIndex]->codecpar->codec_id );
    if ( codec == nullptr )
-      SetStateAndReturn( FindDecoderFails );
+      SetStateAndReturn( AudioReaderDecoderInitState::FindDecoderFails );
 
    _codecContext = ::avcodec_alloc_context3( codec );
    if ( _codecContext == nullptr )
-      SetStateAndReturn( CodecContextAllocFails );
+      SetStateAndReturn( AudioReaderDecoderInitState::CodecContextAllocFails );
 
    // workaround for WAV decoding bug
    if ( _formatContext->streams[_streamIndex]->codecpar->codec_id == AV_CODEC_ID_FIRST_AUDIO )
@@ -95,28 +95,28 @@ AudioReaderDecoder::InitState AudioReaderDecoder::initialize()
 
    status = ::avcodec_open2( _codecContext, codec, nullptr );
    if ( status != 0 )
-      SetStateAndReturn( CodecOpenFails );
+      SetStateAndReturn( AudioReaderDecoderInitState::CodecOpenFails );
 
    _packet = ::av_packet_alloc();
    if ( _packet == nullptr )
-      SetStateAndReturn( PacketAllocFails );
+      SetStateAndReturn( AudioReaderDecoderInitState::PacketAllocFails );
    ::av_init_packet( _packet );
 
    _frame = ::av_frame_alloc();
    if ( _frame == nullptr )
-      SetStateAndReturn( FrameAllocFails );
+      SetStateAndReturn( AudioReaderDecoderInitState::FrameAllocFails );
 
    ::av_seek_frame( _formatContext, _streamIndex, 0, AVSEEK_FLAG_ANY );
 
-   SetStateAndReturn( Ok );
+   SetStateAndReturn( AudioReaderDecoderInitState::Ok );
 }
 
 bool AudioReaderDecoder::getAudioParams( AudioParams& p )
 {
-   if ( _initState == NoInit )
+   if ( _initState == AudioReaderDecoderInitState::NoInit )
       initialize();
 
-   if ( _initState != Ok )
+   if ( _initState != AudioReaderDecoderInitState::Ok )
       return false;
 
    p.sampleFormat = _codecContext->sample_fmt;
@@ -131,10 +131,10 @@ bool AudioReaderDecoder::getAudioParams( AudioParams& p )
 
 bool AudioReaderDecoder::readAndDecode( std::function<void( const AVFrame * )> callback )
 {
-   if ( _initState == NoInit )
+   if ( _initState == AudioReaderDecoderInitState::NoInit )
       initialize();
 
-   if ( _initState != Ok )
+   if ( _initState != AudioReaderDecoderInitState::Ok )
       return false;
 
    int status;

@@ -11,6 +11,7 @@
 
 AudioReaderDecoderResampler::AudioReaderDecoderResampler( const std::string& path )
    : _path( path )
+   , _state( NoInit )
    , _numInResampleBuffer( 0 )
    , _resampleBufferSampleCapacity( 0 )
    , _isPlanar( false )
@@ -26,21 +27,27 @@ AudioReaderDecoderResampler::~AudioReaderDecoderResampler()
 
 }
 
+#define SetStateAndReturnFalse(a) \
+{                 \
+   _state = a;    \
+   return false;  \
+}
+
 bool AudioReaderDecoderResampler::loadAudioData()
 {
    _readerDecoder.reset( new AudioReaderDecoder( _path ) );
 
-   if ( _readerDecoder->initialize() != AudioReaderDecoder::Ok )
-      return false;
+   if ( _readerDecoder->initialize() != AudioReaderDecoderInitState::Ok )
+      SetStateAndReturnFalse( ReaderDecoderInitFails );
 
-   if ( !_readerDecoder->getAudioParams( _inputParams ) )
-      return false;
+   // ReaderDecoder has already successfully initialized so no need to check return value
+   _readerDecoder->getAudioParams( _inputParams );
 
    AudioParams outputParams = { 2, AV_SAMPLE_FMT_S16, 44100, 2 };
 
    _resampler.reset( new AudioResampler( _inputParams, _inputParams.sampleRate, outputParams ) );
-   if ( _resampler->initialize() != AudioResampler::Ok )
-      return false;
+   if ( _resampler->initialize() != AudioResamplerInitState::Ok )
+      SetStateAndReturnFalse( ResamplerInitFails );
 
    _resampleBufferSampleCapacity = _inputParams.sampleRate;
 
@@ -65,7 +72,10 @@ bool AudioReaderDecoderResampler::loadAudioData()
    {
       this->processDecodedAudio( frame );
    };
-   _readerDecoder->readAndDecode( callback );
+
+   if ( !_readerDecoder->readAndDecode( callback ) )
+      SetStateAndReturnFalse( LoadAudioFails );
+   _state = Ok;
 
    int numFlushed = _resampler->flush();
    if ( numFlushed > 0 )
@@ -80,6 +90,24 @@ bool AudioReaderDecoderResampler::loadAudioData()
    }
 
    return true;
+}
+
+bool AudioReaderDecoderResampler::readerDecoderInitState( AudioReaderDecoderInitState& state ) const
+{
+   if ( _readerDecoder == nullptr )
+      return false;
+
+   state = _readerDecoder->initState();
+   return true;
+}
+
+ bool AudioReaderDecoderResampler::resamplerInitState( AudioResamplerInitState& state ) const
+{
+    if ( _resampler == nullptr )
+       return false;
+
+    state = _resampler->initState();
+    return true;
 }
 
 void AudioReaderDecoderResampler::processDecodedAudio( const AVFrame* frame )

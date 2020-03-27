@@ -15,7 +15,7 @@ AudioResampler::AudioResampler( const AudioParams& inputParams, int maxInSampleC
    , _outputParams( outputParams )
    , _maxReturnedSampleCount( 0 )
    , _dstData( nullptr )
-   , _initState( NoInit )
+   , _initState( AudioResamplerInitState::NoInit )
    , _swrContext( nullptr )
    , _numConverted( 0 )
 {
@@ -42,9 +42,9 @@ AudioResampler::~AudioResampler()
    return a;       \
 }
 
-AudioResampler::InitState AudioResampler::initialize()
+AudioResamplerInitState AudioResampler::initialize()
 {
-   if ( _initState != NoInit )
+   if ( _initState != AudioResamplerInitState::NoInit )
       return _initState;
 
    uint64_t inChannelLayout = ::av_get_default_channel_layout( _inputParams.channelCount );
@@ -57,23 +57,23 @@ AudioResampler::InitState AudioResampler::initialize()
 
    ::swr_init( _swrContext );
    if ( ::swr_is_initialized( _swrContext ) == 0 )
-      SetStateAndReturn( InitFails );
+      SetStateAndReturn( AudioResamplerInitState::InitFails );
 
    _maxReturnedSampleCount = ::swr_get_out_samples( _swrContext, _maxInSampleCount );
 
    int dst_linesize = 0;
    int status = ::av_samples_alloc_array_and_samples( &_dstData, &dst_linesize, _outputParams.channelCount, _maxReturnedSampleCount, _outputParams.sampleFormat, 0 );
    if ( status <= 0 )
-      SetStateAndReturn( OutputInitFails );
+      SetStateAndReturn( AudioResamplerInitState::OutputInitFails );
 
-   SetStateAndReturn( Ok );
+   SetStateAndReturn( AudioResamplerInitState::Ok );
 }
 
 int AudioResampler::convert( const uint8_t* leftPtr, const uint8_t* rightPtr, int n )
 {
-   if ( _initState == NoInit )
+   if ( _initState == AudioResamplerInitState::NoInit )
       initialize();
-   if ( _initState != Ok )
+   if ( _initState != AudioResamplerInitState::Ok )
       return 0;
 
    int returnedSampleCount = n * _outputParams.sampleRate / _inputParams.sampleRate;
@@ -86,9 +86,9 @@ int AudioResampler::convert( const uint8_t* leftPtr, const uint8_t* rightPtr, in
 
 int AudioResampler::convert( const uint8_t *nonPlanarPtr, int n )
 {
-   if ( _initState == NoInit )
+   if ( _initState == AudioResamplerInitState::NoInit )
       initialize();
-   if ( _initState != Ok )
+   if ( _initState != AudioResamplerInitState::Ok )
       return 0;
 
    int returnedSampleCount = n * _outputParams.sampleRate / _inputParams.sampleRate;
