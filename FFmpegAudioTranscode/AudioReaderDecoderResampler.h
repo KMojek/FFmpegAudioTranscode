@@ -37,6 +37,7 @@ public:
 protected:
    void processDecodedAudio( const AVFrame* );
    void copyResampledAudio( int sampleCount );
+   void flushResampleBuffer();
 
    const std::string                   _path;
    State                               _state;
@@ -51,4 +52,5 @@ protected:
    int                                 _numInResampleBuffer;
    int                                 _resampleBufferSampleCapacity;
    AudioParams                         _inputParams;
+   int                                 _primingAdjustment;
 };

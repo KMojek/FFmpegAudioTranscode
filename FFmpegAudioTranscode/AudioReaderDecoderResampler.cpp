@@ -15,11 +15,21 @@ AudioReaderDecoderResampler::AudioReaderDecoderResampler( const std::string& pat
    , _numInResampleBuffer( 0 )
    , _resampleBufferSampleCapacity( 0 )
    , _isPlanar( false )
+   , _primingAdjustment( 0 )
 {
 #if LIBAVFORMAT_VERSION_MAJOR < 58
    ::avcodec_register_all();
    ::av_register_all();
 #endif
+
+   // format-specific adjustment for "priming samples"
+   size_t pos;
+   if ( ( pos = path.rfind( '.' ) ) != std::string::npos )
+   {
+      std::string ext( path.substr( pos ) );
+      if ( ext == ".mp3" )
+         _primingAdjustment = 1152;
+   }
 }
 
 AudioReaderDecoderResampler::~AudioReaderDecoderResampler()
@@ -83,6 +93,8 @@ bool AudioReaderDecoderResampler::loadAudioData()
 
    if ( !_readerDecoder->readAndDecode( callback ) )
       SetStateAndReturn( LoadAudioFails, false );
+
+   flushResampleBuffer();
 
    int numFlushed = _resampler->flush();
    if ( numFlushed > 0 )
@@ -191,4 +203,23 @@ void AudioReaderDecoderResampler::copyResampledAudio( int sampleCount )
       _leftChannel.push_back( *ptr++ );
       _rightChannel.push_back( *ptr++ );
    }
+}
+
+void AudioReaderDecoderResampler::flushResampleBuffer()
+{
+   if ( _numInResampleBuffer == 0 )
+      return;
+
+   if ( _nonPlanarResampleBuff != nullptr )
+   {
+      int numConverted = _resampler->convert( _nonPlanarResampleBuff.get(),  std::min( _numInResampleBuffer + _primingAdjustment, _resampleBufferSampleCapacity ) );
+      copyResampledAudio( numConverted );
+   }
+   else if ( _leftResampleBuff != nullptr && _rightResampleBuff != nullptr )
+   {
+      int numConverted = _resampler->convert( _leftResampleBuff.get(), _rightResampleBuff.get(), std::min( _numInResampleBuffer + _primingAdjustment, _resampleBufferSampleCapacity ) );
+      copyResampledAudio( numConverted );
+   }
+
+   _numInResampleBuffer = 0;
 }
