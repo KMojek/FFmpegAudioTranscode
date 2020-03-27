@@ -36,6 +36,7 @@ public:
 
 protected:
    void processDecodedAudio( const AVFrame* );
+   void copyResampledAudio( int sampleCount );
 
    const std::string                   _path;
    State                               _state;

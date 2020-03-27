@@ -27,10 +27,10 @@ AudioReaderDecoderResampler::~AudioReaderDecoderResampler()
 
 }
 
-#define SetStateAndReturnFalse(a) \
-{                 \
-   _state = a;    \
-   return false;  \
+#define SetStateAndReturn(a, b) \
+{              \
+   _state = a; \
+   return b;   \
 }
 
 bool AudioReaderDecoderResampler::loadAudioData()
@@ -38,7 +38,7 @@ bool AudioReaderDecoderResampler::loadAudioData()
    _readerDecoder.reset( new AudioReaderDecoder( _path ) );
 
    if ( _readerDecoder->initialize() != AudioReaderDecoderInitState::Ok )
-      SetStateAndReturnFalse( ReaderDecoderInitFails );
+      SetStateAndReturn( ReaderDecoderInitFails, false );
 
    // ReaderDecoder has already successfully initialized so no need to check return value
    _readerDecoder->getAudioParams( _inputParams );
@@ -47,7 +47,7 @@ bool AudioReaderDecoderResampler::loadAudioData()
 
    _resampler.reset( new AudioResampler( _inputParams, _inputParams.sampleRate, outputParams ) );
    if ( _resampler->initialize() != AudioResamplerInitState::Ok )
-      SetStateAndReturnFalse( ResamplerInitFails );
+      SetStateAndReturn( ResamplerInitFails, false );
 
    _resampleBufferSampleCapacity = _inputParams.sampleRate;
 
@@ -56,10 +56,18 @@ bool AudioReaderDecoderResampler::loadAudioData()
    {
       int bufferSize = _resampleBufferSampleCapacity * _inputParams.bytesPerSample;
 
-      _leftResampleBuff.reset( new uint8_t[bufferSize] );
-      _rightResampleBuff.reset( new uint8_t[bufferSize] );
-      ::memset( _leftResampleBuff.get(), 0, bufferSize );
-      ::memset( _rightResampleBuff.get(), 0, bufferSize );
+      if ( _inputParams.channelCount == 1 )
+      {
+         _nonPlanarResampleBuff.reset( new uint8_t[bufferSize] );
+         ::memset( _nonPlanarResampleBuff.get(), 0, bufferSize );
+      }
+      else
+      {
+         _leftResampleBuff.reset( new uint8_t[bufferSize] );
+         _rightResampleBuff.reset( new uint8_t[bufferSize] );
+         ::memset( _leftResampleBuff.get(), 0, bufferSize );
+         ::memset( _rightResampleBuff.get(), 0, bufferSize );
+      }
    }
    else
    {
@@ -74,8 +82,7 @@ bool AudioReaderDecoderResampler::loadAudioData()
    };
 
    if ( !_readerDecoder->readAndDecode( callback ) )
-      SetStateAndReturnFalse( LoadAudioFails );
-   _state = Ok;
+      SetStateAndReturn( LoadAudioFails, false );
 
    int numFlushed = _resampler->flush();
    if ( numFlushed > 0 )
@@ -89,7 +96,7 @@ bool AudioReaderDecoderResampler::loadAudioData()
       }
    }
 
-   return true;
+   SetStateAndReturn( Ok, true );
 }
 
 bool AudioReaderDecoderResampler::readerDecoderInitState( AudioReaderDecoderInitState& state ) const
@@ -112,41 +119,52 @@ bool AudioReaderDecoderResampler::readerDecoderInitState( AudioReaderDecoderInit
 
 void AudioReaderDecoderResampler::processDecodedAudio( const AVFrame* frame )
 {
+   // For now, only support mono & stereo... silently fail otherwise
+   if ( _inputParams.channelCount > 2 )
+      return;
+
    int sampleCount = frame->nb_samples;
    int numToCopy = std::min( _resampleBufferSampleCapacity - _numInResampleBuffer, sampleCount );
 
-   if ( _isPlanar && _inputParams.channelCount == 2 )
+   if ( _isPlanar )
    {
-      const uint8_t* leftCh = frame->data[0];
-      const uint8_t* rightCh = frame->data[1];
-      ::memcpy( _leftResampleBuff.get() + _numInResampleBuffer * _inputParams.bytesPerSample, leftCh, numToCopy * _inputParams.bytesPerSample );
-      ::memcpy( _rightResampleBuff.get() + _numInResampleBuffer * _inputParams.bytesPerSample, rightCh, numToCopy * _inputParams.bytesPerSample );
-      _numInResampleBuffer += numToCopy;
-
-      if ( _numInResampleBuffer == _resampleBufferSampleCapacity )
+      if ( _inputParams.channelCount == 2 )
       {
-         int numConverted = _resampler->convert( _leftResampleBuff.get(), _rightResampleBuff.get(), _resampleBufferSampleCapacity );
+         const uint8_t* leftCh = frame->data[0];
+         const uint8_t* rightCh = frame->data[1];
+         ::memcpy( _leftResampleBuff.get() + _numInResampleBuffer * _inputParams.bytesPerSample, leftCh, numToCopy * _inputParams.bytesPerSample );
+         ::memcpy( _rightResampleBuff.get() + _numInResampleBuffer * _inputParams.bytesPerSample, rightCh, numToCopy * _inputParams.bytesPerSample );
+         _numInResampleBuffer += numToCopy;
 
-         // hard-coded here for 16-bit stereo output
-         auto output = _resampler->outputBuffers();
-         const int16_t *ptr = (const int16_t *)output[0];
-         for ( int i = 0; i < numConverted; ++i )
+         if ( _numInResampleBuffer == _resampleBufferSampleCapacity )
          {
-            _leftChannel.push_back( *ptr++ );
-            _rightChannel.push_back( *ptr++ );
+            int numConverted = _resampler->convert( _leftResampleBuff.get(), _rightResampleBuff.get(), _resampleBufferSampleCapacity );
+            copyResampledAudio( numConverted );
+
+            ::memcpy( _leftResampleBuff.get(), leftCh + numToCopy * _inputParams.bytesPerSample, ( sampleCount - numToCopy ) * _inputParams.bytesPerSample );
+            ::memcpy( _rightResampleBuff.get(), rightCh + numToCopy * _inputParams.bytesPerSample, ( sampleCount - numToCopy ) * _inputParams.bytesPerSample );
+
+            _numInResampleBuffer = sampleCount - numToCopy;
          }
+      }
+      else if ( _inputParams.channelCount == 1 )
+      {
+         const uint8_t* inputCh = frame->data[0];
+         ::memcpy( _nonPlanarResampleBuff.get() + _numInResampleBuffer *_inputParams.bytesPerSample, inputCh, numToCopy *_inputParams.bytesPerSample );
+         _numInResampleBuffer += numToCopy;
 
-         ::memcpy( _leftResampleBuff.get(), leftCh + numToCopy * _inputParams.bytesPerSample, ( sampleCount - numToCopy ) * _inputParams.bytesPerSample );
-         ::memcpy( _rightResampleBuff.get(), rightCh + numToCopy * _inputParams.bytesPerSample, ( sampleCount - numToCopy ) * _inputParams.bytesPerSample );
+         if ( _numInResampleBuffer == _resampleBufferSampleCapacity )
+         {
+            int numConverted = _resampler->convert( _nonPlanarResampleBuff.get(), _resampleBufferSampleCapacity );
+            copyResampledAudio( numConverted );
 
-         _numInResampleBuffer = sampleCount - numToCopy;
+            ::memcpy( _nonPlanarResampleBuff.get(), inputCh + numToCopy *_inputParams.bytesPerSample, ( sampleCount - numToCopy ) * _inputParams.bytesPerSample );
+
+            _numInResampleBuffer = sampleCount - numToCopy;
+         }
       }
    }
-   else if ( _isPlanar && _inputParams.channelCount == 1 )
-   {
-      // todo
-   }
-   else if ( !_isPlanar && _inputParams.channelCount <= 2 )
+   else if ( _inputParams.channelCount <= 2 )
    {
       const uint8_t* inputCh = frame->data[0];
       ::memcpy( _nonPlanarResampleBuff.get() + _numInResampleBuffer * _inputParams.channelCount *_inputParams.bytesPerSample, inputCh, numToCopy * _inputParams.channelCount *_inputParams.bytesPerSample );
@@ -155,24 +173,22 @@ void AudioReaderDecoderResampler::processDecodedAudio( const AVFrame* frame )
       if ( _numInResampleBuffer == _resampleBufferSampleCapacity )
       {
          int numConverted = _resampler->convert( _nonPlanarResampleBuff.get(), _resampleBufferSampleCapacity );
-
-         // hard-coded here for 16-bit stereo output
-         auto output = _resampler->outputBuffers();
-         const int16_t *ptr = (const int16_t *)output[0];
-         for ( int i = 0; i < numConverted; ++i )
-         {
-            _leftChannel.push_back( *ptr++ );
-            _rightChannel.push_back( *ptr++ );
-         }
+         copyResampledAudio( numConverted );
 
          ::memcpy( _nonPlanarResampleBuff.get(), inputCh + numToCopy * _inputParams.channelCount *_inputParams.bytesPerSample, ( sampleCount - numToCopy ) * _inputParams.channelCount *_inputParams.bytesPerSample );
 
          _numInResampleBuffer = sampleCount - numToCopy;
       }
    }
-   else
-   {
-      // only supporting mono and stereo currently
-   }
+}
 
+void AudioReaderDecoderResampler::copyResampledAudio( int sampleCount )
+{
+   auto output = _resampler->outputBuffers();
+   const int16_t *ptr = (const int16_t *)output[0];
+   for ( int i = 0; i < sampleCount; ++i )
+   {
+      _leftChannel.push_back( *ptr++ );
+      _rightChannel.push_back( *ptr++ );
+   }
 }
