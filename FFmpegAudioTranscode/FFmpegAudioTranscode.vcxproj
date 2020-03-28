@@ -94,7 +94,7 @@
     <ClCompile Include="AudioReaderDecoder.cpp" />
     <ClCompile Include="AudioReaderDecoderResampler.cpp" />
     <ClCompile Include="AudioResampler.cpp" />
-    <ClCompile Include="FFmpegAudioTranscode.cpp" />
+    <ClCompile Include="main.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>

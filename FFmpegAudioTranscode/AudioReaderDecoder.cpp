@@ -151,7 +151,6 @@ bool AudioReaderDecoder::readAndDecode( std::function<void( const AVFrame * )> c
          receivedEOF = true;
 
       status = ::avcodec_send_packet( _codecContext, receivedEOF ? nullptr : _packet );
-      ::av_packet_unref( _packet );
 
       if ( status == 0 )
       {
@@ -165,6 +164,7 @@ bool AudioReaderDecoder::readAndDecode( std::function<void( const AVFrame * )> c
                callback( _frame );
          } while ( status != AVERROR( EAGAIN ) );
       }
+      ::av_packet_unref( _packet );
    }
 
    return true;
