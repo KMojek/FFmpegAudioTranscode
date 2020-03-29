@@ -44,7 +44,7 @@ AudioReaderDecoder::~AudioReaderDecoder()
    if ( _frame != nullptr )
       ::av_frame_free( &_frame );
    if ( _packet != nullptr )
-      ::av_packet_unref( _packet );
+      ::av_packet_free( &_packet );
    if ( _codecContext != nullptr )
       ::avcodec_free_context( &_codecContext );
    if ( _formatContext != nullptr )
