@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "AudioReaderDecoderResampler.h"
+#include "InitFFmpeg.h"
 
 int main( int argc, char **argv )
 {
@@ -16,6 +17,8 @@ int main( int argc, char **argv )
 
    std::string inputPath( argv[1] );
    std::string outputPath( argv[2] );
+
+   InitFFmpeg();
 
    AudioReaderDecoderResampler audioLoader( inputPath );
    if ( !audioLoader.loadAudioData() )

@@ -17,11 +17,6 @@ AudioReaderDecoderResampler::AudioReaderDecoderResampler( const std::string& pat
    , _isPlanar( false )
    , _primingAdjustment( 0 )
 {
-#if LIBAVFORMAT_VERSION_MAJOR < 58
-   ::avcodec_register_all();
-   ::av_register_all();
-#endif
-
    // format-specific adjustment for "priming samples"
    size_t pos;
    if ( ( pos = path.rfind( '.' ) ) != std::string::npos )
