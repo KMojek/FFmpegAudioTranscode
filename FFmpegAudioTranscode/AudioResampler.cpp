@@ -26,10 +26,12 @@ AudioResampler::~AudioResampler()
 {
    if ( _dstData != nullptr )
    {
-      uint8_t *ptr = _dstData[1];
-      ::av_freep( &_dstData[0] );
+      int n = ( ::av_sample_fmt_is_planar( _outputParams.sampleFormat ) != 0 ) ? _outputParams.channelCount : 1;
+      for ( int i = 0; i < n; ++i )
+         ::av_freep( &_dstData[i] );
       ::av_freep( &_dstData );
    }
+
    if ( _swrContext != nullptr )
    {
       ::swr_close( _swrContext );

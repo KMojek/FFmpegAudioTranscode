@@ -85,7 +85,6 @@
     <ClInclude Include="AudioLoader.h" />
     <ClInclude Include="AudioParams.h" />
     <ClInclude Include="AudioReaderDecoder.h" />
-    <ClInclude Include="AudioReaderDecoderResampler.h" />
     <ClInclude Include="AudioResampler.h" />
     <ClInclude Include="InitFFmpeg.h" />
     <ClInclude Include="stdafx.h" />
@@ -95,7 +94,6 @@
   <ItemGroup>
     <ClCompile Include="AudioLoader.cpp" />
     <ClCompile Include="AudioReaderDecoder.cpp" />
-    <ClCompile Include="AudioReaderDecoderResampler.cpp" />
     <ClCompile Include="AudioResampler.cpp" />
     <ClCompile Include="InitFFmpeg.cpp" />
     <ClCompile Include="main.cpp" />

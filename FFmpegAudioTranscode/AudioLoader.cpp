@@ -130,6 +130,7 @@ void AudioLoader::processDecodedAudio( const AVFrame* frame )
    {
       int numConverted = _resampler->convert( _resampleBuff.get(), _resampleBufferSampleCapacity );
       int numLeftovers = sampleCount - numToCopy;
+
       copyResampledAudio( numConverted );
 
       if ( !needToInterleaveSamples )
@@ -138,12 +139,13 @@ void AudioLoader::processDecodedAudio( const AVFrame* frame )
       }
       else
       {
+         int srcStartIndex = numToCopy * _inputParams.bytesPerSample;
          uint8_t* dst = _resampleBuff.get();
          for ( int i = 0; i < numLeftovers; ++i )
          {
             for ( int ii = 0; ii < _inputParams.channelCount; ++ii )
             {
-               const uint8_t* src = &frame->data[ii][numToCopy *_inputParams.bytesPerSample + i * _inputParams.bytesPerSample];
+               const uint8_t* src = &frame->data[ii][srcStartIndex + i * _inputParams.bytesPerSample];
                ::memcpy( dst, src, _inputParams.bytesPerSample );
                dst += _inputParams.bytesPerSample;
             }

@@ -8,7 +8,6 @@
 #include <vector>
 
 #include "AudioLoader.h"
-//#include "AudioReaderDecoderResampler.h"
 #include "InitFFmpeg.h"
 
 int main( int argc, char **argv )
@@ -21,16 +20,10 @@ int main( int argc, char **argv )
 
    InitFFmpeg();
 
-   //AudioReaderDecoderResampler audioLoader( inputPath );
    AudioLoader audioLoader( inputPath );
    if ( !audioLoader.loadAudioData() )
       return  -1;
 
-   //std::vector< std::vector<int16_t> > data = {
-   //   audioLoader.leftChannelData(),
-   //   audioLoader.rightChannelData()
-   //};
-   //::WriteWav( outputPath, data, 44100 );
    ::WriteWav( outputPath, audioLoader.processedAudio(), 44100 );
 
    return 0;

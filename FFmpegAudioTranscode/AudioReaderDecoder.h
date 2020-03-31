@@ -41,4 +41,3 @@ protected:
    AVPacket*                     _packet;
    AVFrame*                      _frame;
 };
-
