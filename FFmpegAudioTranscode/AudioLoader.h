@@ -17,11 +17,11 @@ class AudioResampler;
 enum class AudioReaderDecoderInitState;
 enum class AudioResamplerInitState;
 
-class AudioReaderDecoderResampler
+class AudioLoader
 {
 public:
-   AudioReaderDecoderResampler( const std::string& path );
-   virtual ~AudioReaderDecoderResampler();
+   AudioLoader( const std::string& path );
+   virtual ~AudioLoader();
 
    enum State { Ok, NoInit, ReaderDecoderInitFails, ResamplerInitFails, LoadAudioFails };
 
@@ -31,8 +31,8 @@ public:
    bool readerDecoderInitState( AudioReaderDecoderInitState& state ) const;
    bool resamplerInitState( AudioResamplerInitState& state ) const;
 
-   const std::vector<int16_t> &  leftChannelData() const { return _leftChannel; }
-   const std::vector<int16_t> &  rightChannelData() const { return _rightChannel; }
+   // 16-bit stereo interleaved audio samples
+   const std::vector<int16_t> & processedAudio() const { return _processedAudio; }
 
 protected:
    void processDecodedAudio( const AVFrame* );
@@ -43,14 +43,11 @@ protected:
    State                               _state;
    std::unique_ptr<AudioReaderDecoder> _readerDecoder;
    std::unique_ptr<AudioResampler>     _resampler;
-   std::vector<int16_t>                _leftChannel;
-   std::vector<int16_t>                _rightChannel;
-   bool                                _isPlanar;
-   std::unique_ptr<uint8_t[]>          _leftResampleBuff;
-   std::unique_ptr<uint8_t[]>          _rightResampleBuff;
-   std::unique_ptr<uint8_t[]>          _nonPlanarResampleBuff;
+   std::vector<int16_t>                _processedAudio;
+   std::unique_ptr<uint8_t[]>          _resampleBuff;
    int                                 _numInResampleBuffer;
    int                                 _resampleBufferSampleCapacity;
    AudioParams                         _inputParams;
+   AudioParams                         _resamplerInputParams;
    int                                 _primingAdjustment;
 };

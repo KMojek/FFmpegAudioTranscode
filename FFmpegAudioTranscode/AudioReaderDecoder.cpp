@@ -11,22 +11,6 @@ extern "C"
 #include <libswresample/swresample.h>
 }
 
-namespace
-{
-   int findAudioStream( const AVFormatContext* fc )
-   {
-      int n = fc->nb_streams;
-      for ( int i = 0; i < n; ++i )
-      {
-         const AVStream* pStream = fc->streams[i];
-         if ( pStream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO )
-            return i;
-      }
-
-      return -1;
-   }
-}
-
 AudioReaderDecoder::AudioReaderDecoder( const std::string& path )
    : _path( path )
    , _initState( AudioReaderDecoderInitState::NoInit )
@@ -70,13 +54,14 @@ AudioReaderDecoderInitState AudioReaderDecoder::initialize()
    if ( status != 0 )
       SetStateAndReturn( AudioReaderDecoderInitState::OpenFails );
 
-   _streamIndex = findAudioStream( _formatContext ) /*::av_find_best_stream( _formatContext, AVMEDIA_TYPE_AUDIO, -1, -1, &codec, 0 )*/;
+   status = ::avformat_find_stream_info( _formatContext, nullptr );
+   if ( status < 0 )
+      SetStateAndReturn( AudioReaderDecoderInitState::FindStreamInfoFails );
+
+   AVCodec *codec = nullptr;
+   _streamIndex = ::av_find_best_stream( _formatContext, AVMEDIA_TYPE_AUDIO, -1, -1, &codec, 0 );
    if ( _streamIndex == -1 )
       SetStateAndReturn( AudioReaderDecoderInitState::NoAudioStream );
-
-   AVCodec *codec = ::avcodec_find_decoder( _formatContext->streams[_streamIndex]->codecpar->codec_id );
-   if ( codec == nullptr )
-      SetStateAndReturn( AudioReaderDecoderInitState::FindDecoderFails );
 
    _codecContext = ::avcodec_alloc_context3( codec );
    if ( _codecContext == nullptr )

@@ -33,10 +33,10 @@
     <ClInclude Include="AudioResampler.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="AudioReaderDecoderResampler.h">
+    <ClInclude Include="InitFFmpeg.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="InitFFmpeg.h">
+    <ClInclude Include="AudioLoader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -56,10 +56,10 @@
     <ClCompile Include="AudioResampler.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="AudioReaderDecoderResampler.cpp">
+    <ClCompile Include="InitFFmpeg.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="InitFFmpeg.cpp">
+    <ClCompile Include="AudioLoader.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

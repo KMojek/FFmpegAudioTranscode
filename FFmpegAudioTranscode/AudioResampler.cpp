@@ -26,9 +26,12 @@ AudioResampler::~AudioResampler()
 {
    if ( _dstData != nullptr )
    {
-      ::av_free( _dstData[0] );
-      ::av_free( _dstData );
+      int n = ( ::av_sample_fmt_is_planar( _outputParams.sampleFormat ) != 0 ) ? _outputParams.channelCount : 1;
+      for ( int i = 0; i < n; ++i )
+         ::av_freep( &_dstData[i] );
+      ::av_freep( &_dstData );
    }
+
    if ( _swrContext != nullptr )
    {
       ::swr_close( _swrContext );
@@ -76,10 +79,9 @@ int AudioResampler::convert( const uint8_t* leftPtr, const uint8_t* rightPtr, in
    if ( _initState != AudioResamplerInitState::Ok )
       return 0;
 
-   int returnedSampleCount = n * _outputParams.sampleRate / _inputParams.sampleRate;
    const uint8_t *data[] = { leftPtr, rightPtr };
 
-   _numConverted = ::swr_convert( _swrContext, _dstData, returnedSampleCount, data, n );
+   _numConverted = ::swr_convert( _swrContext, _dstData, _maxReturnedSampleCount, data, n );
 
    return _numConverted;
 }
@@ -91,8 +93,7 @@ int AudioResampler::convert( const uint8_t *nonPlanarPtr, int n )
    if ( _initState != AudioResamplerInitState::Ok )
       return 0;
 
-   int returnedSampleCount = n * _outputParams.sampleRate / _inputParams.sampleRate;
-   _numConverted = ::swr_convert( _swrContext, _dstData, returnedSampleCount, &nonPlanarPtr, n );
+   _numConverted = ::swr_convert( _swrContext, _dstData, _maxReturnedSampleCount, &nonPlanarPtr, n );
 
    return _numConverted;
 }
