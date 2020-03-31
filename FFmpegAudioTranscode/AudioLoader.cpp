@@ -143,7 +143,7 @@ void AudioLoader::processDecodedAudio( const AVFrame* frame )
          {
             for ( int ii = 0; ii < _inputParams.channelCount; ++ii )
             {
-               const uint8_t* src = &frame->data[ii][i + numToCopy *_inputParams.bytesPerSample];
+               const uint8_t* src = &frame->data[ii][numToCopy *_inputParams.bytesPerSample + i * _inputParams.bytesPerSample];
                ::memcpy( dst, src, _inputParams.bytesPerSample );
                dst += _inputParams.bytesPerSample;
             }
