@@ -16,7 +16,7 @@ struct AudioParams;
 enum class AudioReaderDecoderInitState
 {
    Ok, NoInit,
-   FormatContextAllocFails, OpenFails, NoAudioStream, FindDecoderFails, CodecContextAllocFails, CodecOpenFails, FrameAllocFails, PacketAllocFails
+   FormatContextAllocFails, OpenFails, NoAudioStream, FindStreamInfoFails, CodecContextAllocFails, CodecOpenFails, FrameAllocFails, PacketAllocFails
 };
 
 class AudioReaderDecoder

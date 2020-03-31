@@ -82,6 +82,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="AudioLoader.h" />
     <ClInclude Include="AudioParams.h" />
     <ClInclude Include="AudioReaderDecoder.h" />
     <ClInclude Include="AudioReaderDecoderResampler.h" />
@@ -92,6 +93,7 @@
     <ClInclude Include="WavUtil.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="AudioLoader.cpp" />
     <ClCompile Include="AudioReaderDecoder.cpp" />
     <ClCompile Include="AudioReaderDecoderResampler.cpp" />
     <ClCompile Include="AudioResampler.cpp" />

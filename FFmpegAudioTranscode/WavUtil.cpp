@@ -80,6 +80,16 @@ bool WriteWav( const std::string& path, const std::vector< std::vector<int16_t> 
    return true;
 }
 
+bool WriteWav( const std::string& path, const std::vector<int16_t>& data, int rate )
+{
+   WAVFileWriter writer( path, 2, rate );
+   for ( auto sample : data )
+      writer.WriteSample( sample );
+
+   return true;
+}
+
+
 bool ReadWavAudioParams( const std::string& path, AudioParams& params )
 {
    std::ifstream file( path, std::ifstream::binary );
