@@ -3,12 +3,15 @@ C++ wrapper around FFmpeg audio decoding and resampling. This is for when it mak
 
 Reading, decoding, and resampling the contents of a file with an audio stream should be stupid-simple, like this:
 ```
-   AudioReaderDecoderResampler audioLoader( "input.mp4" );
+   AudioLoader audioLoader( "input.mp4" );
    if ( !audioLoader.loadAudioData() )
+   {
+      // not shown here... retrieve FFmpeg API call that led to failure
       return -1;
+   }
 
-   const std::vector<int16_t>&  leftData( audioLoader.leftChannelData() );
-   const std::vector<int16_t>& rightData( audioLoader.rightChannelData() );
+   const std::vector<inti6_t>& interleavedAudio( audioLoader.processedAudio() );
+
 ```
 
 Not shown here, but in case of loadAudioData() failure, there is a mechanism to drill down to the FFmpeg API call that led to the failure.
