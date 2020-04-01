@@ -20,7 +20,7 @@ enum class AudioResamplerInitState;
 class AudioLoader
 {
 public:
-   AudioLoader( const std::string& path );
+   AudioLoader( const std::string& path, bool forceLittleEndian=false );
    virtual ~AudioLoader();
 
    enum State { Ok, NoInit, ReaderDecoderInitFails, ResamplerInitFails, LoadAudioFails };
@@ -40,6 +40,7 @@ protected:
    void flushResampleBuffer();
 
    const std::string                   _path;
+   const bool                          _forceLittleEndian;
    State                               _state;
    std::unique_ptr<AudioReaderDecoder> _readerDecoder;
    std::unique_ptr<AudioResampler>     _resampler;

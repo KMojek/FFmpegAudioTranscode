@@ -9,8 +9,19 @@
 
 #include <string.h>
 
-AudioLoader::AudioLoader( const std::string& path )
+namespace
+{
+   int16_t swap_endian( int16_t s )
+   {
+      int8_t *ch = (int8_t*)&s;
+      std::swap( ch[0], ch[1] );
+      return *(int16_t *)ch;
+   }
+}
+
+AudioLoader::AudioLoader( const std::string& path, bool forceLittleEndian/*=false*/ )
    : _path( path )
+   , _forceLittleEndian( forceLittleEndian )
    , _state( NoInit )
    , _numInResampleBuffer( 0 )
    , _resampleBufferSampleCapacity( 0 )
@@ -77,6 +88,17 @@ bool AudioLoader::loadAudioData()
    int numFlushed = _resampler->flush();
    if ( numFlushed > 0 )
       copyResampledAudio( numFlushed );
+
+   if ( _forceLittleEndian )
+   {
+      int i = 1;
+      char c = *(char *)&i;
+      if ( c == 0 ) // running on big-endian architecture
+      {
+         for ( auto iter = _processedAudio.begin(); iter != _processedAudio.end(); ++iter )
+            *iter = swap_endian( *iter );
+      }
+   }
 
    SetStateAndReturn( Ok, true );
 }
