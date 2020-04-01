@@ -2,29 +2,56 @@
 //
 
 #include "stdafx.h"
-#include "WavUtil.h"
 
+#include <iostream>
 #include <string>
-#include <vector>
+
+#include <gtest/gtest.h>
 
 #include "AudioLoader.h"
 #include "InitFFmpeg.h"
 
+
 int main( int argc, char **argv )
 {
-   if ( argc < 3 )
-      return -1;
-
-   std::string inputPath( argv[1] );
-   std::string outputPath( argv[2] );
+   ::testing::InitGoogleTest( &argc, argv );
 
    InitFFmpeg();
 
-   AudioLoader audioLoader( inputPath );
-   if ( !audioLoader.loadAudioData() )
-      return  -1;
+   int result = RUN_ALL_TESTS();
 
-   ::WriteWav( outputPath, audioLoader.processedAudio(), 44100 );
+#ifdef _DEBUG
+   std::cout << "\nPress enter to continue...";
+   std::cin.get();
+#endif
 
-   return 0;
+   return result;
+}
+
+
+class FFmpegAudioTranscodeIntegrationTest : public ::testing::Test
+{
+protected:
+   void SetUp() override
+   {
+
+   }
+
+   void TearDown() override
+   {
+
+   }
+};
+
+TEST_F( FFmpegAudioTranscodeIntegrationTest, FiveSecondMP3_HasMatchingDecodedLength )
+{
+   const std::string testMediaPath( ".\\TestMedia\\five second mono sine wave.mp3" );
+   const uint64_t expectedSize = 44100 * 2 * 5; // hard-coded default in AudioLoader
+
+   AudioLoader audioLoader( testMediaPath );
+   bool status = audioLoader.loadAudioData();
+   EXPECT_TRUE( status );
+
+   auto decodedAudioSize = audioLoader.processedAudio().size();
+   EXPECT_EQ( decodedAudioSize, expectedSize );
 }
