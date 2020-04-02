@@ -23,7 +23,6 @@ public:
    AudioResamplerInitState initialize();
    AudioResamplerInitState initState() const { return _initState; }
 
-   int convert( const uint8_t* leftPtr, const uint8_t* rightPtr, int n );
    int convert( const uint8_t* nonPlanarPtr, int n );
    int flush();
 
