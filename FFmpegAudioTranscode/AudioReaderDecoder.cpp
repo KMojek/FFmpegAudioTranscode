@@ -67,16 +67,10 @@ AudioReaderDecoderInitState AudioReaderDecoder::initialize()
    if ( _codecContext == nullptr )
       SetStateAndReturn( AudioReaderDecoderInitState::CodecContextAllocFails );
 
-   // workaround for WAV decoding bug
-   if ( _formatContext->streams[_streamIndex]->codecpar->codec_id == AV_CODEC_ID_FIRST_AUDIO )
-   {
-      AudioParams params;
-      ReadWavAudioParams( _path, params );
-      _codecContext->sample_rate = params.sampleRate;
-      _codecContext->sample_fmt = params.sampleFormat;
-      _codecContext->channels = params.channelCount;
-      _codecContext->channel_layout = ( params.channelCount == 1 ) ? AV_CH_LAYOUT_MONO : AV_CH_LAYOUT_STEREO;
-   }
+   AVStream* pStream = _formatContext->streams[_streamIndex];
+   status = ::avcodec_parameters_to_context( _codecContext, pStream->codecpar );
+   if ( status < 0 )
+      SetStateAndReturn( AudioReaderDecoderInitState::CodecContextFillFails );
 
    status = ::avcodec_open2( _codecContext, codec, nullptr );
    if ( status != 0 )

@@ -45,6 +45,10 @@ protected:
    {
 
    }
+
+   // We're hard-coded to resample to 44.1 kHz stereo and test files
+   // were all generated in Audacity as 5-second long sine waves
+   const uint64_t expectedSize = 44100 * 2 * 5;
 };
 
 TEST_F( FFmpegAudioTranscodeIntegrationTest, FiveSecondMP3_HasMatchingDecodedLength )
@@ -54,10 +58,6 @@ TEST_F( FFmpegAudioTranscodeIntegrationTest, FiveSecondMP3_HasMatchingDecodedLen
    AudioLoader audioLoader( testMediaPath );
    bool status = audioLoader.loadAudioData();
    EXPECT_TRUE( status );
-
-   // We're hard-coded to resample to 44.1 kHz stereo and test files
-   // were all generated in Audacity as 5-second long sine waves
-   const uint64_t expectedSize = 44100 * 2 * 5;
 
    auto decodedAudioSize = audioLoader.processedAudio().size();
    EXPECT_EQ( decodedAudioSize, expectedSize );
@@ -129,4 +129,15 @@ TEST_F( FFmpegAudioTranscodeIntegrationTest, FortyEightKHzMP3_DiscardsPrimingSam
    EXPECT_LT( std::abs( index - 44 ), 8 );
 
    EXPECT_TRUE( valuesAlwaysIncresing( samples.cbegin(), samples.cbegin() + index ) );
+}
+
+TEST_F( FFmpegAudioTranscodeIntegrationTest, WavImport_WorksAsExpected_WithoutPreviousHack )
+{
+   const std::string testMediaPath( ".\\TestMedia\\sine.wav" );
+
+   AudioLoader audioLoader( testMediaPath );
+   audioLoader.loadAudioData();
+
+   auto decodedAudioSize = audioLoader.processedAudio().size();
+   EXPECT_EQ( decodedAudioSize, expectedSize );
 }

@@ -88,22 +88,3 @@ bool WriteWav( const std::string& path, const std::vector<int16_t>& data, int ra
 
    return true;
 }
-
-
-bool ReadWavAudioParams( const std::string& path, AudioParams& params )
-{
-   std::ifstream file( path, std::ifstream::binary );
-   WAVHeader header;
-
-   if ( !file.good() )
-      return false;
-
-   file.read( (char *)&header, 44 );
-
-   params.channelCount = header.channels;
-   params.sampleFormat = ( header.compressionCode == 1 ) ? AV_SAMPLE_FMT_S16 : AV_SAMPLE_FMT_FLT;
-   params.sampleRate = header.sampleRate;
-   params.bytesPerSample = header.bitsPerSample / 8;
- 
-   return true;
-}
