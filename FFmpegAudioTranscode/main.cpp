@@ -14,6 +14,7 @@
 
 #include "AudioLoader.h"
 #include "InitFFmpeg.h"
+#include "VideoExporter.h"
 
 
 int main( int argc, char **argv )
@@ -140,4 +141,10 @@ TEST_F( FFmpegAudioTranscodeIntegrationTest, WavImport_WorksAsExpected_WithoutPr
 
    auto decodedAudioSize = audioLoader.processedAudio().size();
    EXPECT_EQ( decodedAudioSize, expectedSize );
+}
+
+TEST_F( FFmpegAudioTranscodeIntegrationTest, Foo )
+{
+   const std::string path( "C:\\crap\\video_out.avi" );
+   VideoExporter exporter( path, VideoExporter::Params(), VideoExporter::Params() );
 }
