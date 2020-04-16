@@ -145,6 +145,6 @@ TEST_F( FFmpegAudioTranscodeIntegrationTest, WavImport_WorksAsExpected_WithoutPr
 
 TEST_F( FFmpegAudioTranscodeIntegrationTest, Foo )
 {
-   const std::string path( "C:\\crap\\video_out.avi" );
+   const std::string path( "C:\\crap\\video_out.mp4" );
    VideoExporter exporter( path, VideoExporter::Params(), VideoExporter::Params() );
 }
