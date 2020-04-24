@@ -2,10 +2,18 @@
 
 extern "C"
 {
-#include <libavformat/avformat.h>
+   enum AVPixelFormat;
+
+   struct AVCodec;
+   struct AVCodecContext;
+   struct AVFormatContext;
+   struct AVFrame;
+   struct AVPacket;
+   struct SwsContext;
 }
 
 #include <cstdint>
+#include <functional>
 #include <string>
 
 class VideoExporter
@@ -17,17 +25,45 @@ public:
       int            width;
       int            height;
       int            fps;     // limited to constant-FPS input and output currently
+      int            audioSampleRate; // assumes stereo input/output
    };
 
-   VideoExporter( const std::string& outPath, const Params& inParams, const Params& outParams );
+   // Callbacks provide the video and audio for each frame
+   typedef std::function< bool( uint8_t* /*buf*/, int/*bufSize*/, unsigned /*frameIndex*/ ) > GetVideoFrameFn;
+   typedef std::function< bool( float* /*leftCh*/, float* rightCh, int /*frameSize*/ ) > GetAudioFrameFn;
+
+   VideoExporter( const std::string& outPath, const Params& inParams, uint32_t frameCount );
    virtual ~VideoExporter();
 
-   bool initialize();
-   bool deliverFrame( const uint8_t* frame, int frameSize );
-   bool completeExport();
+   void setGetVideoCallback( GetVideoFrameFn fn ) { _getVideo = fn; }
+   void setGetAudioCallback( GetAudioFrameFn fn ) { _getAudio = fn; }
+
+   void initialize();
+   void exportEverything();
+   void completeExport();
 
 protected:
+   void initializeVideo( const AVCodec* codec );
+   void initializeAudio( const AVCodec* codec );
+   void initializeFrames();
+   void initializePackets();
+
+   void cleanup();
+
    const std::string    _path;
    const Params         _inParams;
+   const uint32_t       _frameCount;
    Params               _outParams;
+   int64_t              _ptsIncrement = 0LL;
+   SwsContext*          _swsContext = nullptr;
+   AVFormatContext*     _formatContext = nullptr;
+   AVCodecContext*      _videoCodecContext = nullptr;
+   AVCodecContext*      _audioCodecContext = nullptr;
+   AVFrame*             _colorConversionFrame = nullptr;
+   AVFrame*             _videoFrame = nullptr;
+   AVFrame*             _audioFrame = nullptr;
+   AVPacket*            _videoPacket = nullptr;
+   AVPacket*            _audioPacket = nullptr;
+   GetVideoFrameFn      _getVideo = nullptr;
+   GetAudioFrameFn      _getAudio = nullptr;
 };

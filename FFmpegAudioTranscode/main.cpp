@@ -3,19 +3,24 @@
 
 #include "stdafx.h"
 
-#include <algorithm>
-#include <cmath>
-#include <functional>
-#include <iterator>
-#include <iostream>
-#include <string>
-
-#include <gtest/gtest.h>
-
 #include "AudioLoader.h"
 #include "InitFFmpeg.h"
 #include "VideoExporter.h"
 
+#include <gtest/gtest.h>
+
+extern "C"
+{
+#include <libavformat/avformat.h>
+}
+
+#include <algorithm>
+#include <cmath>
+#include <filesystem>
+#include <functional>
+#include <iterator>
+#include <iostream>
+#include <string>
 
 int main( int argc, char **argv )
 {
@@ -143,8 +148,17 @@ TEST_F( FFmpegAudioTranscodeIntegrationTest, WavImport_WorksAsExpected_WithoutPr
    EXPECT_EQ( decodedAudioSize, expectedSize );
 }
 
-TEST_F( FFmpegAudioTranscodeIntegrationTest, Foo )
+TEST_F( FFmpegAudioTranscodeIntegrationTest, VideoExporter_Initialize_And_CompleteExport_DoesNotThrow )
 {
-   const std::string path( "C:\\crap\\video_out.mp4" );
-   VideoExporter exporter( path, VideoExporter::Params(), VideoExporter::Params() );
+   std::filesystem::path tempPath( std::filesystem::temp_directory_path() );
+   tempPath /= "out.mp4";
+
+   VideoExporter::Params params = { AV_PIX_FMT_RGB24, 128, 96, 20, 44100 };
+   VideoExporter exporter( tempPath.string(), params, 100 );
+
+   EXPECT_NO_THROW( exporter.initialize() );
+
+   EXPECT_NO_THROW( exporter.completeExport() );
+
+   std::filesystem::remove( tempPath );
 }
