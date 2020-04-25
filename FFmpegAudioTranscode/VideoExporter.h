@@ -47,6 +47,7 @@ protected:
    void initializeAudio( const AVCodec* codec );
    void initializeFrames();
    void initializePackets();
+   void pushVideo();
 
    void cleanup();
 

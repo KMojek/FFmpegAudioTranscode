@@ -19,22 +19,32 @@ namespace
    bool getVideo( uint8_t* buf, int bufSize, unsigned /*frameIndex*/ )
    {
      uint8_t* ptr = buf;
-     for ( int i = 0; i < bufSize; ++i )
-     {
-        *ptr++ = ( i % 3 == 0 ) ? 0xff : 0x00;
-        *ptr++ = 0x00;
-        *ptr++ = 0x00;
-     }
+     for ( int i = 0; i < bufSize; ++i, ++ptr )
+        *ptr = ( i % 3 == 0 ) ? 0xff : 0x00;
+
      return true;
    }
 
    // initialize to silence
    bool getAudio( float* leftCh, float *rightCh, int frameSize )
    {
-      std::memset( leftCh, 0, frameSize * sizeof( float ) );
-      std::memset( rightCh, 0, frameSize * sizeof( float ) );
+      std::memset( leftCh, 0, frameSize );
+      std::memset( rightCh, 0, frameSize );
 
       return true;
+   }
+
+   void pushBufferedData( AVPacket* pkt, AVCodecContext* cc, AVFormatContext* fc )
+   {
+      int status = ::avcodec_send_frame( cc, nullptr );
+      while ( 1 )
+      {
+         status = ::avcodec_receive_packet( cc, pkt );
+         if ( status == 0 )
+            status = ::av_interleaved_write_frame( fc, pkt );
+         else if ( status == AVERROR_EOF )
+            break;
+      }
    }
 }
 
@@ -196,6 +206,15 @@ void VideoExporter::initializeFrames()
    status = ::av_frame_get_buffer( _videoFrame, 0 );
    if ( status != 0 )
       throw std::runtime_error( "VideoExporter - Error initializing video frame" );
+   _videoFrame->pts = 0LL;
+
+   int flags = SWS_FAST_BILINEAR; // doesn't matter too much since we're just doing a colorspace conversion
+   AVPixelFormat inFormat = AV_PIX_FMT_RGB24;
+   _swsContext = ::sws_getContext( _inParams.width, _inParams.height, _inParams.pfmt,
+                                   _outParams.width, _outParams.height, _outParams.pfmt,
+                                   flags, nullptr, nullptr, nullptr );
+   if ( _swsContext == nullptr )
+      throw std::runtime_error( "VideoExporter - Error initializing color-converter" );
 
    _audioFrame = ::av_frame_alloc();
    _audioFrame->format = AV_SAMPLE_FMT_FLTP;
@@ -206,6 +225,7 @@ void VideoExporter::initializeFrames()
    status = ::av_frame_get_buffer( _audioFrame, 0 );
    if ( status != 0 )
       throw std::runtime_error( "VideoExporter - Error initializing audio frame" );
+   _audioFrame->pts = 0LL;
 }
 
 void VideoExporter::initializePackets()
@@ -229,16 +249,27 @@ void VideoExporter::initializePackets()
 
 void VideoExporter::exportEverything()
 {
+   uint8_t* data[] = { _colorConversionFrame->data[0], nullptr, nullptr, nullptr };
+   int stride[] = { _colorConversionFrame->linesize[0], 0, 0, 0 };
+   int frameHeight = _colorConversionFrame->height;
+   int frameSize = stride[0] * frameHeight;
+
    for ( uint32_t i = 0; i < _frameCount; ++i )
    {
-      getVideo( _colorConversionFrame->buf[0]->data, _colorConversionFrame->linesize[0], i );
+      _getVideo( data[0], frameSize, i );
+
+      int height = ::sws_scale( _swsContext, data, stride, 0, frameHeight, _videoFrame->data, _videoFrame->linesize );
+      if ( height != _videoCodecContext->height )
+         throw std::runtime_error( "VideoExporter - color conversion error" );
 
       getAudio( reinterpret_cast<float *>( _audioFrame->buf[0]->data ),
                 reinterpret_cast<float *>( _audioFrame->buf[1]->data ),
                 _audioFrame->linesize[0] );
 
-      // todo - actually compress and write out data!
+      pushVideo();
    }
+
+   pushBufferedData( _videoPacket, _videoCodecContext,_formatContext );
 }
 
 void VideoExporter::completeExport()
@@ -284,6 +315,33 @@ void VideoExporter::cleanup()
    {
       ::sws_freeContext( _swsContext );
       _swsContext = nullptr;
+   }
+}
+
+void VideoExporter::pushVideo()
+{
+   int status = 0;
+
+   do
+   {
+      status = ::avcodec_send_frame( _videoCodecContext, _videoFrame );
+      if ( status < 0 )
+         throw std::runtime_error( "VideoExporter - error sending video frame to compresssor" );
+      _videoFrame->pts += _ptsIncrement;
+      //frame->pkt_dts += ptsIncrement;
+
+      status = ::avcodec_receive_packet( _videoCodecContext, _videoPacket );
+      if ( status == AVERROR( EAGAIN ) )
+         continue;
+      if ( status < 0 )
+         throw std::runtime_error( "VideoExporter - error receiving compressed video" );
+   } while ( status != 0 );
+
+   if ( status == 0 )
+   {
+      status = ::av_interleaved_write_frame( _formatContext, _videoPacket );
+      if ( status < 0 )
+         throw std::runtime_error( "VideoExporter - error writing compressed video frame" );
    }
 }
 

@@ -148,17 +148,43 @@ TEST_F( FFmpegAudioTranscodeIntegrationTest, WavImport_WorksAsExpected_WithoutPr
    EXPECT_EQ( decodedAudioSize, expectedSize );
 }
 
-TEST_F( FFmpegAudioTranscodeIntegrationTest, VideoExporter_Initialize_And_CompleteExport_DoesNotThrow )
-{
-   std::filesystem::path tempPath( std::filesystem::temp_directory_path() );
-   tempPath /= "out.mp4";
 
-   VideoExporter::Params params = { AV_PIX_FMT_RGB24, 128, 96, 20, 44100 };
-   VideoExporter exporter( tempPath.string(), params, 100 );
+class VideoExporterIntegrationTest : public ::testing::Test
+{
+protected:
+   void SetUp() override
+   {
+      tempPath = std::filesystem::temp_directory_path() / "out.mp4";
+   }
+
+   void TearDown() override
+   {
+      std::filesystem::remove( tempPath );
+   }
+
+   std::filesystem::path tempPath;
+
+   // Arbitrary 128x96 RGB24 video with audio at 44.1 kHz
+   const VideoExporter::Params params = { AV_PIX_FMT_RGB24, 128, 96, 20, 44100 };
+   const int FrameCount = 100;
+};
+
+TEST_F( VideoExporterIntegrationTest, VideoExporter_Initialize_And_CompleteExport_DoesNotThrow )
+{
+   VideoExporter exporter( tempPath.string(), params, FrameCount );
 
    EXPECT_NO_THROW( exporter.initialize() );
 
    EXPECT_NO_THROW( exporter.completeExport() );
+}
 
-   std::filesystem::remove( tempPath );
+TEST_F( VideoExporterIntegrationTest, VideoExporter_ExportDummySamplesSucceeds )
+{
+   VideoExporter exporter( tempPath.string(), params, FrameCount );
+
+   exporter.initialize();
+
+  EXPECT_NO_THROW( exporter.exportEverything() );
+
+   exporter.completeExport();
 }
