@@ -11,25 +11,31 @@ extern "C"
 #include <libswscale/swscale.h>
 }
 
+#include <algorithm>
+#include <cstring>
 #include <stdexcept>
+
+#ifdef min
+#undef min
+#endif
 
 namespace
 {
    // initialize to solid-red
    bool getVideo( uint8_t* buf, int bufSize, unsigned /*frameIndex*/ )
    {
-     uint8_t* ptr = buf;
-     for ( int i = 0; i < bufSize; ++i, ++ptr )
-        *ptr = ( i % 3 == 0 ) ? 0xff : 0x00;
+      uint8_t* ptr = buf;
+      for ( int i = 0; i < bufSize; ++i, ++ptr )
+         *ptr = ( i % 3 == 0 ) ? 0xff : 0x00;
 
-     return true;
+      return true;
    }
 
    // initialize to silence
    bool getAudio( float* leftCh, float *rightCh, int frameSize )
    {
-      std::memset( leftCh, 0, frameSize );
-      std::memset( rightCh, 0, frameSize );
+      std::memset( leftCh, 0, frameSize * sizeof(float) );
+      std::memset( rightCh, 0, frameSize * sizeof(float) );
 
       return true;
    }
@@ -46,7 +52,68 @@ namespace
             break;
       }
    }
+
+   void update( const float **l, const float** r, int *count, int n )
+   {
+      *l += n;
+      *r += n;
+      *count -= n;
+   }
 }
+
+VideoExporter::AudioAccumulator::AudioAccumulator( AVFrame* frame, int frameSize, std::function< void() > frameReadyCallback )
+   : _frame( frame )
+   , _frameSize( frameSize )
+   , _frameReadyCallback( frameReadyCallback )
+{
+   if ( _frame->buf[0]->data == nullptr || _frame->buf[1]->data == nullptr )
+      throw std::runtime_error( "VideoExporter - invalid audio input format" );
+
+   _frame->nb_samples = 0;
+}
+
+void VideoExporter::AudioAccumulator::pushAudio( const float* leftCh, const float* rightCh, int sampleCount )
+{
+   while ( sampleCount > 0 )
+   {
+      int numProcessed = handlePartialOrCompletedFrame( leftCh, rightCh, sampleCount );
+      update( &leftCh, &rightCh, &sampleCount, numProcessed );
+
+      int numLeftover = std::min( _frameSize - numProcessed, sampleCount );
+      if ( numLeftover > 0 )
+      {
+         std::memcpy( _frame->buf[0]->data, leftCh, numLeftover * sizeof( float ) );
+         std::memcpy( _frame->buf[1]->data, rightCh, numLeftover * sizeof( float ) );
+         _frame->nb_samples = numLeftover;
+
+         update( &leftCh, &rightCh, &sampleCount, numLeftover );
+      }
+   }
+}
+
+int VideoExporter::AudioAccumulator::handlePartialOrCompletedFrame( const float* leftCh, const float* rightCh, int sampleCount )
+{
+   int numToCopy = std::min( _frameSize - _frame->nb_samples, sampleCount );
+
+   float *dstLeft = reinterpret_cast<float *>( _frame->buf[0]->data );
+   dstLeft += _frame->nb_samples;
+   std::memcpy( dstLeft, leftCh, numToCopy * sizeof( float ) );
+
+   float *dstRight = reinterpret_cast<float *>( _frame->buf[1]->data );
+   dstRight += _frame->nb_samples;
+   std::memcpy( dstRight, rightCh, numToCopy * sizeof( float ) );
+
+   _frame->nb_samples += numToCopy;
+
+   if ( _frame->nb_samples == _frameSize )
+   {
+      _frameReadyCallback();
+      _frame->nb_samples = 0;
+   }
+
+   return numToCopy;
+}
+
 
 #define STUPID_SIMPLE
 
@@ -226,6 +293,9 @@ void VideoExporter::initializeFrames()
    if ( status != 0 )
       throw std::runtime_error( "VideoExporter - Error initializing audio frame" );
    _audioFrame->pts = 0LL;
+
+   auto lambda = [this]() { this->audioFrameFilledCallback(); };
+   _audioAccumulator = std::make_unique<AudioAccumulator>( _audioFrame, _audioCodecContext->frame_size, lambda );
 }
 
 void VideoExporter::initializePackets()
@@ -254,7 +324,11 @@ void VideoExporter::exportEverything()
    int frameHeight = _colorConversionFrame->height;
    int frameSize = stride[0] * frameHeight;
 
-   for ( uint32_t i = 0; i < _frameCount; ++i )
+   int audioFramesPerVideoFrame = _inParams.audioSampleRate / _inParams.fps;
+   std::unique_ptr<float[]> leftCh( new float[audioFramesPerVideoFrame] );
+   std::unique_ptr<float[]> rightCh( new float[audioFramesPerVideoFrame] );
+
+   for ( uint32_t i = 0; i < _frameCount; )
    {
       _getVideo( data[0], frameSize, i );
 
@@ -262,14 +336,30 @@ void VideoExporter::exportEverything()
       if ( height != _videoCodecContext->height )
          throw std::runtime_error( "VideoExporter - color conversion error" );
 
-      getAudio( reinterpret_cast<float *>( _audioFrame->buf[0]->data ),
-                reinterpret_cast<float *>( _audioFrame->buf[1]->data ),
-                _audioFrame->linesize[0] );
-
+      int64_t ptsBefore = _videoFrame->pts;
       pushVideo();
+      int64_t ptsAfter = _videoFrame->pts;
+      int numVideoFramesPushed = int( ( ptsAfter - ptsBefore ) / _ptsIncrement );
+      for ( int ii = 0; ii < numVideoFramesPushed; ++ii )
+      {
+         _getAudio( leftCh.get(), rightCh.get(), audioFramesPerVideoFrame );
+         _audioAccumulator->pushAudio( leftCh.get(), rightCh.get(), audioFramesPerVideoFrame );
+      }
+      // leftovers
+      int videoPushedinMS = numVideoFramesPushed * 1000 / _outParams.fps;
+      int numAudioFramesToPush = videoPushedinMS * _outParams.audioSampleRate / 1000;
+      int64_t audioTimeAfter = _audioFrame->pts;
+      if ( audioTimeAfter < numAudioFramesToPush )
+      {
+         int n = int( numAudioFramesToPush - audioTimeAfter );
+         _getAudio( leftCh.get(), rightCh.get(), n );
+         _audioAccumulator->pushAudio( leftCh.get(), rightCh.get(), n );
+      }
+      //pushAudio();
+      i += numVideoFramesPushed;
    }
 
-   pushBufferedData( _videoPacket, _videoCodecContext,_formatContext );
+   //pushBufferedData( _videoPacket, _videoCodecContext,_formatContext );
 }
 
 void VideoExporter::completeExport()
@@ -321,6 +411,8 @@ void VideoExporter::cleanup()
 void VideoExporter::pushVideo()
 {
    int status = 0;
+   int64_t ptsBefore = _videoFrame->pts;
+   static int numCalls = 0;
 
    do
    {
@@ -328,7 +420,6 @@ void VideoExporter::pushVideo()
       if ( status < 0 )
          throw std::runtime_error( "VideoExporter - error sending video frame to compresssor" );
       _videoFrame->pts += _ptsIncrement;
-      //frame->pkt_dts += ptsIncrement;
 
       status = ::avcodec_receive_packet( _videoCodecContext, _videoPacket );
       if ( status == AVERROR( EAGAIN ) )
@@ -339,9 +430,68 @@ void VideoExporter::pushVideo()
 
    if ( status == 0 )
    {
+      //_formatContext->streams[0]->cur_dts = ptsBefore;
+      //_formatContext->streams[0]->cur_dts += 512;
+      if ( ptsBefore == 0LL )
+         _formatContext->streams[0]->cur_dts = 0LL;
+      else
+      {
+         ++numCalls;
+         _formatContext->streams[0]->cur_dts = numCalls;
+      }
       status = ::av_interleaved_write_frame( _formatContext, _videoPacket );
       if ( status < 0 )
          throw std::runtime_error( "VideoExporter - error writing compressed video frame" );
+      //_videoFrame->pts += _ptsIncrement;
+   }
+}
+
+//void VideoExporter::pushAudio()
+//{
+//   // todo
+//   int x = 1;
+//}
+
+void VideoExporter::audioFrameFilledCallback()
+{
+   int status = 0;
+   int64_t ptsBefore = _audioFrame->pts;
+   static int numCalls = 0;
+
+   do
+   {
+      status = ::avcodec_send_frame( _audioCodecContext, _audioFrame );
+      if ( status < 0 )
+         throw std::runtime_error( "VideoExporter - error sending audio frame to compresssor" );
+      _audioFrame->pts += _audioCodecContext->frame_size;
+
+      status = ::avcodec_receive_packet( _audioCodecContext, _audioPacket );
+      if ( status == AVERROR( EAGAIN ) )
+         return; // need more input... safe to bail at this point
+      if ( status < 0 )
+         throw std::runtime_error( "VideoExporter - error receiving compressed audio" );
+   } while ( status != 0 );
+
+   if ( status == 0 )
+   {
+      //_formatContext->streams[1]->cur_dts = ptsBefore;
+      //_formatContext->streams[1]->cur_dts += 44100;
+      //if ( ptsBefore == 0LL )
+      //   _formatContext->streams[1]->cur_dts = 0LL;
+      //else
+      //   ++_formatContext->streams[1]->cur_dts;
+      if ( ptsBefore == 0LL )
+         _formatContext->streams[1]->cur_dts = 0LL;
+      else
+      {
+         ++numCalls;
+         _formatContext->streams[1]->cur_dts = numCalls;
+      }
+
+      status = ::av_interleaved_write_frame( _formatContext, _audioPacket );
+      if ( status < 0 )
+         throw std::runtime_error( "VideoExporter - error writing compressed audio frame" );
+      //_audioFrame->pts += _audioCodecContext->frame_size;
    }
 }
 
