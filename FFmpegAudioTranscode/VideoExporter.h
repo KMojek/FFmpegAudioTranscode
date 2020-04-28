@@ -64,7 +64,6 @@ protected:
    void initializeFrames();
    void initializePackets();
    void pushVideo();
-   //void pushAudio();
 
    void audioFrameFilledCallback();
    void cleanup();
