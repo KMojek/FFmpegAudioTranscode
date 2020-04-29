@@ -166,7 +166,7 @@ protected:
 
    // Arbitrary 128x96 RGB24 video with audio at 44.1 kHz
    const VideoExporter::Params params = { AV_PIX_FMT_RGB24, 128, 96, 20, 44100 };
-   const int FrameCount = /*100*/ /*80*/ /*40*/35;
+   const int FrameCount = /*100*/ /*80*/ /*40*/ 35;
 };
 
 TEST_F( VideoExporterIntegrationTest, DISABLED_VideoExporter_Initialize_And_CompleteExport_DoesNotThrow )
