@@ -34,16 +34,11 @@ namespace
    // initialize to silence
    bool getAudio( float* leftCh, float *rightCh, int frameSize )
    {
-#if 1
       for ( int i = 0; i < frameSize; ++i )
       {
          leftCh[i] = 0.6f;
          rightCh[i] = -0.4f;
       }
-#else
-      std::memset( leftCh, 0, frameSize * sizeof(float) );
-      std::memset( rightCh, 0, frameSize * sizeof(float) );
-#endif
 
       return true;
    }
@@ -56,7 +51,6 @@ namespace
          status = ::avcodec_receive_packet( cc, pkt );
          if ( status == 0 )
          {
-            //++fc->streams[streamIndex]->cur_dts;
             status = ::av_interleaved_write_frame( fc, pkt );
          }
          else if ( status == AVERROR_EOF )
@@ -109,19 +103,9 @@ void VideoExporter::AudioAccumulator::pushAudio( const float* leftCh, const floa
       int numLeftover = std::min( _frameSize - numProcessed, sampleCount );
       if ( numLeftover > 0 )
       {
-#if 1
          std::memcpy( _frame->buf[0]->data, leftCh, numLeftover * sizeof( float ) );
          std::memcpy( _frame->buf[1]->data, rightCh, numLeftover * sizeof( float ) );
-#else
-         int16_t *dst = reinterpret_cast<int16_t *>( _frame->buf[0]->data );
-         const float *srcL = leftCh;
-         const float *srcR = rightCh;
-         for ( int i = 0; i < numLeftover; ++i, ++srcL, ++srcR )
-         {
-            *dst++ = convertAudioSample( *srcL );
-            *dst++ = convertAudioSample( *srcR );
-         }
-#endif
+
          _frame->nb_samples = numLeftover;
 
          update( &leftCh, &rightCh, &sampleCount, numLeftover );
@@ -133,7 +117,6 @@ int VideoExporter::AudioAccumulator::handlePartialOrCompletedFrame( const float*
 {
    int numToCopy = std::min( _frameSize - _frame->nb_samples, sampleCount );
 
-#if 1
    float *dstLeft = reinterpret_cast<float *>( _frame->buf[0]->data );
    dstLeft += _frame->nb_samples;
    std::memcpy( dstLeft, leftCh, numToCopy * sizeof( float ) );
@@ -141,15 +124,6 @@ int VideoExporter::AudioAccumulator::handlePartialOrCompletedFrame( const float*
    float *dstRight = reinterpret_cast<float *>( _frame->buf[1]->data );
    dstRight += _frame->nb_samples;
    std::memcpy( dstRight, rightCh, numToCopy * sizeof( float ) );
-#else
-   int16_t *dst = reinterpret_cast<int16_t *>( _frame->buf[0]->data );
-   dst += 2 * _frame->nb_samples;
-   for ( int i = 0; i < numToCopy; ++i, ++leftCh, ++rightCh )
-   {
-      *dst++ = convertAudioSample( *leftCh );
-      *dst++ = convertAudioSample( *rightCh );
-   }
-#endif
 
    _frame->nb_samples += numToCopy;
 
@@ -207,9 +181,6 @@ void VideoExporter::initialize()
    if ( sws_ctx == nullptr )
       throw std::runtime_error( "VideoExporter - error setting up video format conversion!" );
 
-   // Initialize audio sample-format converter
-
-
    // Initialize video & audio
    AVOutputFormat* fmt = ::av_guess_format( nullptr, _path.c_str(), nullptr );
    const AVCodec* videoCodec = ::avcodec_find_encoder( fmt->video_codec );
@@ -248,8 +219,7 @@ void VideoExporter::initializeVideo( const AVCodec* codec )
    video_st->time_base.num = 1;
    video_st->time_base.den = _outParams.fps;
    video_st->id = _formatContext->nb_streams - 1;
-   //video_st->cur_dts = 0LL;
-#if 1
+
    _videoCodecContext = ::avcodec_alloc_context3( codec );
    _videoCodecContext->time_base.num = 1;
    _videoCodecContext->time_base.den = _outParams.fps;
@@ -258,7 +228,6 @@ void VideoExporter::initializeVideo( const AVCodec* codec )
    _videoCodecContext->width = _outParams.width;
    _videoCodecContext->height = _outParams.height;
    _videoCodecContext->pix_fmt = _outParams.pfmt;
-   //_videoCodecContext->codec_type = AVMEDIA_TYPE_VIDEO;
    if ( _formatContext->oformat->flags & AVFMT_GLOBALHEADER )
       _videoCodecContext->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
@@ -272,38 +241,6 @@ void VideoExporter::initializeVideo( const AVCodec* codec )
    status = ::avcodec_parameters_from_context( video_st->codecpar, _videoCodecContext );
    if ( status != 0 )
       throw std::runtime_error( "VideoExporter - Error setting video stream parameters" );
-#else
-   AVCodecParameters* video_params = video_st->codecpar;
-   video_params->width = _outParams.width;
-   video_params->height = _outParams.height;
-   video_params->codec_id = codec->id;
-   video_params->codec_type = AVMEDIA_TYPE_VIDEO;
-   video_params->format = _outParams.pfmt;
-
-   _videoCodecContext = ::avcodec_alloc_context3( codec );
-   ::avcodec_parameters_to_context( _videoCodecContext, video_st->codecpar );
-   _videoCodecContext->time_base.num = 1;
-   _videoCodecContext->time_base.den = _outParams.fps;
-   _videoCodecContext->gop_size = 40/*12*/; // aka keyframe interval
-   _videoCodecContext->max_b_frames = 0;
-   if ( _formatContext->oformat->flags & AVFMT_GLOBALHEADER )
-      _videoCodecContext->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
-
-   ::av_opt_set( _videoCodecContext->priv_data, "preset", "fast", 0 );
-   ::av_opt_set( _videoCodecContext->priv_data, "crf", "18", AV_OPT_SEARCH_CHILDREN );
-
-   int status = ::avcodec_open2( _videoCodecContext, nullptr, nullptr );
-   if ( status != 0 )
-      throw std::runtime_error( "VideoExporter - Error opening video codec context" );
-
-   // Ugh... from https://stackoverflow.com/questions/15897849/c-ffmpeg-not-writing-avcc-box-information
-   // For the moov:trak:mdia:minf:stbl:stsd:avc1:avcC atom to be created correctly, it's necessary to
-   // specify the AV_CODEC_FLAG_GLOBAL_HEADER above to get the video sequence headers into the codec
-   // context, and then copy them to the codec parameters before encoding.
-   video_st->codecpar->extradata = ( uint8_t * )::av_malloc( _videoCodecContext->extradata_size );
-   video_st->codecpar->extradata_size = _videoCodecContext->extradata_size;
-   std::memcpy( video_st->codecpar->extradata, _videoCodecContext->extradata, _videoCodecContext->extradata_size );
-#endif
 }
 
 void VideoExporter::initializeAudio( const AVCodec* codec )
@@ -311,12 +248,9 @@ void VideoExporter::initializeAudio( const AVCodec* codec )
    AVStream* audio_st = ::avformat_new_stream( _formatContext, nullptr );
    audio_st->time_base.num = 1;
    audio_st->time_base.den = _outParams.audioSampleRate;
-   //audio_st->cur_dts = 0LL;
    audio_st->id = _formatContext->nb_streams - 1;
 
-#if 1
    _audioCodecContext = ::avcodec_alloc_context3( codec );
-   //_audioCodecContext->codec_type = AVMEDIA_TYPE_AUDIO;
    _audioCodecContext->channels = 2;
    _audioCodecContext->channel_layout = AV_CH_LAYOUT_STEREO;
    _audioCodecContext->sample_rate = _outParams.audioSampleRate;
@@ -333,28 +267,6 @@ void VideoExporter::initializeAudio( const AVCodec* codec )
    status = ::avcodec_parameters_from_context( audio_st->codecpar, _audioCodecContext );
    if ( status != 0 )
       throw std::runtime_error( "VideoExporter - Error setting audio stream parameters" );
-
-#else
-   AVCodecParameters* audio_params = audio_st->codecpar;
-   audio_params->codec_id = codec->id;
-   audio_params->codec_type = AVMEDIA_TYPE_AUDIO;
-   audio_params->format = AV_SAMPLE_FMT_FLTP;
-   audio_params->channels = 2;
-   audio_params->channel_layout = AV_CH_LAYOUT_STEREO;
-   audio_params->sample_rate = _outParams.audioSampleRate;
-   audio_params->bit_rate = 128000;
-
-   _audioCodecContext = ::avcodec_alloc_context3( codec );
-   ::avcodec_parameters_to_context( _audioCodecContext, audio_st->codecpar );
-   //if ( _formatContext->oformat->flags & AVFMT_GLOBALHEADER )
-   //   _audioCodecContext->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
-
-   int status = ::avcodec_open2( _audioCodecContext, nullptr, nullptr );
-   if ( status != 0 )
-      throw std::runtime_error( "VideoExporter - Error opening audio codec context" );
-
-   audio_params->frame_size = _audioCodecContext->frame_size;
-#endif
 }
 
 void VideoExporter::initializeFrames()
@@ -547,8 +459,6 @@ void VideoExporter::cleanup()
 void VideoExporter::pushVideo()
 {
    int status = 0;
-   int64_t ptsBefore = _videoFrame->pts;
-   static int numCalls = 0;
 
    do
    {
@@ -566,39 +476,16 @@ void VideoExporter::pushVideo()
 
    if ( status == 0 )
    {
-      //_formatContext->streams[0]->cur_dts = ptsBefore;
-      //_formatContext->streams[0]->cur_dts += 512;
-#if 0
-      if ( ptsBefore == 0LL )
-         _formatContext->streams[0]->cur_dts = 0LL;
-      else
-      {
-         ++numCalls;
-         _formatContext->streams[0]->cur_dts = numCalls;
-      }
-#endif
-      // sadly, this does not seem to eliminate the errors in av_write_trailer()
-#if 0
-      int64_t n = ( _videoFrame->pts - ptsBefore )/* / _ptsIncrement*/;
-      _videoPacket->duration = n;
-#endif
-
-      // sadly, same here
-#if 0
-      _videoPacket->dts = _videoPacket->pts;
-#endif
+      _videoPacket->stream_index = 0;
       status = ::av_interleaved_write_frame( _formatContext, _videoPacket );
       if ( status < 0 )
          throw std::runtime_error( "VideoExporter - error writing compressed video frame" );
-      _videoFrame->pts += _ptsIncrement;
    }
 }
 
 void VideoExporter::audioFrameFilledCallback()
 {
    int status = 0;
-   int64_t ptsBefore = _audioFrame->pts;
-   static int numCalls = 0;
 
    do
    {
@@ -616,31 +503,9 @@ void VideoExporter::audioFrameFilledCallback()
 
    if ( status == 0 )
    {
-      //_formatContext->streams[1]->cur_dts = ptsBefore;
-      //_formatContext->streams[1]->cur_dts += 44100;
-      //if ( ptsBefore == 0LL )
-      //   _formatContext->streams[1]->cur_dts = 0LL;
-      //else
-      //   ++_formatContext->streams[1]->cur_dts;
-#if 0
-      if ( ptsBefore == 0LL )
-         _formatContext->streams[1]->cur_dts = 0LL;
-      else
-      {
-         ++numCalls;
-         //_formatContext->streams[1]->cur_dts = numCalls;
-         ++_formatContext->streams[1]->cur_dts;
-      }
-#endif
-
-      //if ( _audioPacket->pts == -1024LL)
-      //{
-      //   _audioPacket->pts = 0LL;
-      //}
       _audioPacket->stream_index = 1;
       status = ::av_interleaved_write_frame( _formatContext, _audioPacket );
       if ( status < 0 )
          throw std::runtime_error( "VideoExporter - error writing compressed audio frame" );
-      //_audioFrame->pts += _audioCodecContext->frame_size;
    }
 }
