@@ -185,7 +185,7 @@ TEST_F( VideoExporterIntegrationTest, VideoExporter_ExportDummySamplesSucceeds )
 
    exporter.initialize();
 
-   EXPECT_NO_THROW( exporter.exportEverything( FrameCount ) );
+   EXPECT_NO_THROW( exporter.exportVideoAndAudio( FrameCount ) );
 
    exporter.completeExport();
 }

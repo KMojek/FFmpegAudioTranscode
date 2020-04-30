@@ -2,8 +2,6 @@
 
 extern "C"
 {
-   enum AVPixelFormat;
-
    struct AVCodec;
    struct AVCodecContext;
    struct AVFormatContext;
@@ -22,11 +20,11 @@ class VideoExporter
 public:
    struct Params
    {
-      AVPixelFormat  pfmt;
-      int            width;
-      int            height;
-      int            fps;     // limited to constant-FPS input and output currently
-      int            audioSampleRate; // assumes stereo input/output
+      int   pfmt; /*AVPixelFormat enum*/
+      int   width;
+      int   height;
+      int   fps;     // limited to constant-FPS input and output currently
+      int   audioSampleRate; // assumes stereo input/output
    };
 
    // Callbacks provide the video and audio for each frame
@@ -40,7 +38,7 @@ public:
    void setGetAudioCallback( GetAudioFrameFn fn ) { _getAudio = fn; }
 
    void initialize();
-   void exportEverything( int videoFrameCount );
+   void exportVideoAndAudio( int videoFrameCount );
    void completeExport();
 
 protected:
@@ -54,19 +52,19 @@ protected:
 
    void cleanup();
 
-   const std::string                   _path;
-   const Params                        _inParams;
-   Params                              _outParams;
-   int64_t                             _ptsIncrement = 0LL;
-   SwsContext*                         _swsContext = nullptr;
-   AVFormatContext*                    _formatContext = nullptr;
-   AVCodecContext*                     _videoCodecContext = nullptr;
-   AVCodecContext*                     _audioCodecContext = nullptr;
-   AVFrame*                            _colorConversionFrame = nullptr;
-   AVFrame*                            _videoFrame = nullptr;
-   AVFrame*                            _audioFrame = nullptr;
-   AVPacket*                           _videoPacket = nullptr;
-   AVPacket*                           _audioPacket = nullptr;
-   GetVideoFrameFn                     _getVideo = nullptr;
-   GetAudioFrameFn                     _getAudio = nullptr;
+   const std::string _path;
+   const Params      _inParams;
+   Params            _outParams;
+   int64_t           _ptsIncrement = 0LL;
+   SwsContext*       _swsContext = nullptr;
+   AVFormatContext*  _formatContext = nullptr;
+   AVCodecContext*   _videoCodecContext = nullptr;
+   AVCodecContext*   _audioCodecContext = nullptr;
+   AVFrame*          _colorConversionFrame = nullptr;
+   AVFrame*          _videoFrame = nullptr;
+   AVFrame*          _audioFrame = nullptr;
+   AVPacket*         _videoPacket = nullptr;
+   AVPacket*         _audioPacket = nullptr;
+   GetVideoFrameFn   _getVideo = nullptr;
+   GetAudioFrameFn   _getAudio = nullptr;
 };

@@ -111,8 +111,10 @@ void VideoExporter::initialize()
    // Initialize color-converter
    int sws_flags = SWS_FAST_BILINEAR; // usually doing just a colorspace conversion, so not too critical
 
-   SwsContext* sws_ctx = ::sws_getContext( _inParams.width, _inParams.height, _inParams.pfmt,
-                                           _outParams.width, _outParams.height, _outParams.pfmt,
+   AVPixelFormat inPfmt = static_cast<AVPixelFormat>( _inParams.pfmt );
+   AVPixelFormat outPfmt = static_cast<AVPixelFormat>( _outParams.pfmt );
+   SwsContext* sws_ctx = ::sws_getContext( _inParams.width, _inParams.height, inPfmt,
+                                           _outParams.width, _outParams.height, outPfmt,
                                            sws_flags, nullptr, nullptr, nullptr );
    if ( sws_ctx == nullptr )
       throw std::runtime_error( "VideoExporter - error setting up video format conversion!" );
@@ -163,7 +165,7 @@ void VideoExporter::initializeVideo( const AVCodec* codec )
    _videoCodecContext->max_b_frames = 0;
    _videoCodecContext->width = _outParams.width;
    _videoCodecContext->height = _outParams.height;
-   _videoCodecContext->pix_fmt = _outParams.pfmt;
+   _videoCodecContext->pix_fmt = static_cast<AVPixelFormat>( _outParams.pfmt );
    if ( _formatContext->oformat->flags & AVFMT_GLOBALHEADER )
       _videoCodecContext->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
@@ -225,9 +227,11 @@ void VideoExporter::initializeFrames()
    _videoFrame->pts = 0LL;
 
    int flags = SWS_FAST_BILINEAR; // doesn't matter too much since we're just doing a colorspace conversion
-   AVPixelFormat inFormat = AV_PIX_FMT_RGB24;
-   _swsContext = ::sws_getContext( _inParams.width, _inParams.height, _inParams.pfmt,
-                                   _outParams.width, _outParams.height, _outParams.pfmt,
+   AVPixelFormat inPfmt = static_cast<AVPixelFormat>( _inParams.pfmt );
+   AVPixelFormat outPfmt = static_cast<AVPixelFormat>( _outParams.pfmt );
+
+   _swsContext = ::sws_getContext( _inParams.width, _inParams.height, inPfmt,
+                                   _outParams.width, _outParams.height, outPfmt,
                                    flags, nullptr, nullptr, nullptr );
    if ( _swsContext == nullptr )
       throw std::runtime_error( "VideoExporter - Error initializing color-converter" );
@@ -256,7 +260,7 @@ void VideoExporter::initializePackets()
    ::av_init_packet( _audioPacket );
 }
 
-void VideoExporter::exportEverything( int videoFrameCount )
+void VideoExporter::exportVideoAndAudio( int videoFrameCount )
 {
    // Accumulate the initial packet of compressed video (actually 35 video frames)
    _videoFrame->nb_samples = 0;
@@ -272,7 +276,7 @@ void VideoExporter::exportEverything( int videoFrameCount )
    int64_t numAudioSamplesToPush = endFrameIndex * _outParams.audioSampleRate / _outParams.fps;
    for ( int64_t numAudioSamplesPushed = 0; numAudioSamplesPushed < numAudioSamplesToPush; )
    {
-      // First packet will be 2048 samples; always 1024 after that
+      // For AAC, first packet will be 2048 samples; always 1024 after that
       _audioFrame->nb_samples = 0;
       int64_t ptsBefore = _audioFrame->pts;
       pushAudioUntilPacketFilled();
@@ -297,11 +301,9 @@ void VideoExporter::exportEverything( int videoFrameCount )
       if ( status < 0 )
          throw std::runtime_error( "VideoExporter - error writing compressed video packet" );
 
-      // Process and write some (typically 1 to 3) packets
-      // of audio to keep roughly in sync with video
+      // Process and write some (typically 1 to 3) packets of audio to keep roughly in sync with video
       int64_t numAudioSamplesToPush = endFrameIndex * _outParams.audioSampleRate / _outParams.fps - _audioFrame->pts;
       int64_t numAudioFramesToPush = numAudioSamplesToPush / _audioCodecContext->frame_size;
-      int x = 1;
       for ( int64_t i = 0; i < numAudioFramesToPush; ++i )
       {
          _audioFrame->nb_samples = 0;
