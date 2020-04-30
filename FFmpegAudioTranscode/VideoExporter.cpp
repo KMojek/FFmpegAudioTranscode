@@ -323,6 +323,13 @@ void VideoExporter::exportEverything( int videoFrameCount )
       status = ::avcodec_receive_packet( _videoCodecContext, _videoPacket );
       if ( status == AVERROR_EOF )
          break;
+      if ( status == 0 )
+      {
+         _videoPacket->stream_index = 0;
+         status = ::av_interleaved_write_frame( _formatContext, _videoPacket );
+         if ( status < 0 )
+            throw std::runtime_error( "VideoExporter - error writing cached video frame data" );
+      }
    }
 
    status = ::avcodec_send_frame( _audioCodecContext, nullptr );
@@ -333,10 +340,14 @@ void VideoExporter::exportEverything( int videoFrameCount )
       status = ::avcodec_receive_packet( _audioCodecContext, _audioPacket );
       if ( status == AVERROR_EOF )
          break;
+      if ( status == 0 )
+      {
+         _audioPacket->stream_index = 1;
+         status = ::av_interleaved_write_frame( _formatContext, _audioPacket );
+         if ( status < 0 )
+            throw std::runtime_error( "VideoExporter - error writing cached audio frame data" );
+      }
    }
-   status = ::av_interleaved_write_frame( _formatContext, nullptr );
-   if ( status < 0 )
-      throw std::runtime_error( "VideoExporter - error writing cached frame data" );
 }
 
 void VideoExporter::completeExport()
