@@ -21,12 +21,33 @@ extern "C"
 
 namespace
 {
-   // initialize to solid-red
-   bool getVideo( uint8_t* buf, int bufSize, unsigned /*frameIndex*/ )
+   // initialize to solid color (varies with each frame)
+   bool getVideo( uint8_t* buf, int bufSize, unsigned frameIndex )
    {
       uint8_t* ptr = buf;
-      for ( int i = 0; i < bufSize; ++i, ++ptr )
-         *ptr = ( i % 3 == 0 ) ? 0xff : 0x00;
+      enum Color { Red, Green, Blue } color = Color( frameIndex % 3 );
+      int n = bufSize / 3;
+      for ( int i = 0; i < n; ++i )
+      {
+         if ( color == Red )
+         {
+            *ptr++ = 0xff;
+            *ptr++ = 0x00;
+            *ptr++ = 0x00;
+         }
+         else if ( color == Green )
+         {
+            *ptr++ = 0x00;
+            *ptr++ = 0xff;
+            *ptr++ = 0x00;
+         }
+         else
+         {
+            *ptr++ = 0x00;
+            *ptr++ = 0x00;
+            *ptr++ = 0xff;
+         }
+      }
 
       return true;
    }
@@ -36,111 +57,26 @@ namespace
    {
       for ( int i = 0; i < frameSize; ++i )
       {
-         leftCh[i] = 0.6f;
-         rightCh[i] = -0.4f;
+         leftCh[i] = 0.f;
+         rightCh[i] = 0.f;
       }
 
       return true;
    }
 
-   void pushBufferedData( AVPacket* pkt, AVCodecContext* cc, AVFormatContext* fc, int streamIndex )
-   {
-      int status = ::avcodec_send_frame( cc, nullptr );
-      while ( 1 )
-      {
-         status = ::avcodec_receive_packet( cc, pkt );
-         if ( status == 0 )
-         {
-            status = ::av_interleaved_write_frame( fc, pkt );
-         }
-         else if ( status == AVERROR_EOF )
-            break;
-      }
-   }
-
-   void update( const float **l, const float** r, int *count, int n )
-   {
-      *l += n;
-      *r += n;
-      *count -= n;
-   }
-
-   void my_av_log_callback( void* ptr, int level, const char*fmt, va_list vargs )
-   {
-      char message[2048];
-
-      if ( level <= 16 )
-      {
-         ::vsnprintf( message, 2048, fmt, vargs );
-         int x = 1;
-      }
-   }
-
-   int16_t convertAudioSample( float val )
-   {
-      return int16_t( std::floorf( val * 32767 ) );
-   }
+   //void my_av_log_callback( void* ptr, int level, const char*fmt, va_list vargs )
+   //{
+   //   char message[2048];
+   //   if ( level <= 16 )
+   //   {
+   //      ::vsnprintf( message, 2048, fmt, vargs );
+   //   }
+   //}
 }
 
-VideoExporter::AudioAccumulator::AudioAccumulator( AVFrame* frame, int frameSize, std::function< void() > frameReadyCallback )
-   : _frame( frame )
-   , _frameSize( frameSize )
-   , _frameReadyCallback( frameReadyCallback )
-{
-   if ( _frame->buf[0]->data == nullptr || _frame->buf[1]->data == nullptr )
-      throw std::runtime_error( "VideoExporter audio accumulator - invalid audio frame" );
-
-   _frame->nb_samples = 0;
-}
-
-void VideoExporter::AudioAccumulator::pushAudio( const float* leftCh, const float* rightCh, int sampleCount )
-{
-   while ( sampleCount > 0 )
-   {
-      int numProcessed = handlePartialOrCompletedFrame( leftCh, rightCh, sampleCount );
-      update( &leftCh, &rightCh, &sampleCount, numProcessed );
-
-      int numLeftover = std::min( _frameSize - numProcessed, sampleCount );
-      if ( numLeftover > 0 )
-      {
-         std::memcpy( _frame->buf[0]->data, leftCh, numLeftover * sizeof( float ) );
-         std::memcpy( _frame->buf[1]->data, rightCh, numLeftover * sizeof( float ) );
-
-         _frame->nb_samples = numLeftover;
-
-         update( &leftCh, &rightCh, &sampleCount, numLeftover );
-      }
-   }
-}
-
-int VideoExporter::AudioAccumulator::handlePartialOrCompletedFrame( const float* leftCh, const float* rightCh, int sampleCount )
-{
-   int numToCopy = std::min( _frameSize - _frame->nb_samples, sampleCount );
-
-   float *dstLeft = reinterpret_cast<float *>( _frame->buf[0]->data );
-   dstLeft += _frame->nb_samples;
-   std::memcpy( dstLeft, leftCh, numToCopy * sizeof( float ) );
-
-   float *dstRight = reinterpret_cast<float *>( _frame->buf[1]->data );
-   dstRight += _frame->nb_samples;
-   std::memcpy( dstRight, rightCh, numToCopy * sizeof( float ) );
-
-   _frame->nb_samples += numToCopy;
-
-   if ( _frame->nb_samples == _frameSize )
-   {
-      _frameReadyCallback();
-      _frame->nb_samples = 0;
-   }
-
-   return numToCopy;
-}
-
-
-VideoExporter::VideoExporter( const std::string& outPath, const Params& inParams, uint32_t frameCount )
+VideoExporter::VideoExporter( const std::string& outPath, const Params& inParams/*, uint32_t frameCount*/ )
    : _path( outPath )
    , _inParams( inParams )
-   , _frameCount( frameCount )
 {
    if ( inParams.pfmt != AV_PIX_FMT_RGB24 )
       throw std::runtime_error( "VideoExporter - expecting RGB24 input!" );
@@ -308,106 +244,99 @@ void VideoExporter::initializeFrames()
       if ( status != 0 )
          throw std::runtime_error( "VideoExporter - Error initializing audio frame" );
       _audioFrame->pts = 0LL;
-
-      auto lambda = [this]() { this->audioFrameFilledCallback(); };
-      _audioAccumulator = std::make_unique<AudioAccumulator>( _audioFrame, _audioCodecContext->frame_size, lambda );
    }
 }
 
 void VideoExporter::initializePackets()
 {
-   const int ArbitraryVideoPacketSize = 500000;
    _videoPacket = ::av_packet_alloc();
    ::av_init_packet( _videoPacket );
-   int status = ::av_new_packet( _videoPacket, ArbitraryVideoPacketSize );
-   if ( status != 0 )
-      throw std::runtime_error( "VideoExporter - Error initializing video packet" );
-   _videoPacket->stream_index = 0;
 
-   const int ArbitraryAudioPacketSize = 200000;
    _audioPacket = ::av_packet_alloc();
    ::av_init_packet( _audioPacket );
-   status = ::av_new_packet( _audioPacket, ArbitraryAudioPacketSize );
-   if ( status != 0 )
-      throw std::runtime_error( "VideoExporter - Error initializing audio packet" );
-   _audioPacket->stream_index = 1;
 }
 
-void VideoExporter::exportEverything()
+void VideoExporter::exportEverything( int videoFrameCount )
 {
-   uint8_t* data[] = { _colorConversionFrame->data[0], nullptr, nullptr, nullptr };
-   int stride[] = { _colorConversionFrame->linesize[0], 0, 0, 0 };
-   int frameHeight = _colorConversionFrame->height;
-   int frameSize = stride[0] * frameHeight;
+   // Accumulate the initial packet of compressed video (actually 35 video frames)
+   _videoFrame->nb_samples = 0;
+   int endFrameIndex = pushVideoUntilPacketFilled( 0 );
 
-   int audioFramesPerVideoFrame = _inParams.audioSampleRate / _inParams.fps;
-   std::unique_ptr<float[]> leftCh( new float[audioFramesPerVideoFrame] );
-   std::unique_ptr<float[]> rightCh( new float[audioFramesPerVideoFrame] );
+   // Write the first packet of compressed video
+   _videoPacket->stream_index = 0;
+   int status = ::av_interleaved_write_frame( _formatContext, _videoPacket );
+   if ( status < 0 )
+      throw std::runtime_error( "VideoExporter - error writing initial compressed video packet" );
 
-   // I think what we need here is to accumulate enough compressed data for however
-   // many streams we have in order to do a first av_interleaved_write_frame() call
-   // on each stream. For video, that's going to be a full 35 frames. Not sure for
-   // audio but seems like we need that to 
-
-   // should we start out with some audio in order to avoid negative timestamps?
-   //_getAudio( leftCh.get(), rightCh.get(), audioFramesPerVideoFrame );
-   //_audioAccumulator->pushAudio( leftCh.get(), rightCh.get(), audioFramesPerVideoFrame );
-
-   // Argh... current-status: if we stick to video-only, we get exactly the file we expect.
-   // Limiting here to first 35 video frames but seems true for any length. As soon as we
-   // do anything with audio, things start to get weird.
-   for ( uint32_t i = 0; i < _frameCount; )
+   // We'll need to push a bunch of audio packets through in order to "catch up" to the video
+   int64_t numAudioSamplesToPush = endFrameIndex * _outParams.audioSampleRate / _outParams.fps;
+   for ( int64_t numAudioSamplesPushed = 0; numAudioSamplesPushed < numAudioSamplesToPush; )
    {
-      _getVideo( data[0], frameSize, i );
+      // First packet will be 2048 samples; always 1024 after that
+      _audioFrame->nb_samples = 0;
+      int64_t ptsBefore = _audioFrame->pts;
+      pushAudioUntilPacketFilled();
 
-      int height = ::sws_scale( _swsContext, data, stride, 0, frameHeight, _videoFrame->data, _videoFrame->linesize );
-      if ( height != _videoCodecContext->height )
-         throw std::runtime_error( "VideoExporter - color conversion error" );
-
-      int64_t ptsBefore = _videoFrame->pts;
-      pushVideo();
-      int64_t ptsAfter = _videoFrame->pts;
-      int numVideoFramesPushed = int( ( ptsAfter - ptsBefore ) / _ptsIncrement );
-#if 1
-      for ( int ii = 0; ii < numVideoFramesPushed; ++ii )
-      {
-         _getAudio( leftCh.get(), rightCh.get(), audioFramesPerVideoFrame );
-         _audioAccumulator->pushAudio( leftCh.get(), rightCh.get(), audioFramesPerVideoFrame );
-      }
-#endif
-#if 0
-      // leftovers
-      int videoPushedinMS = numVideoFramesPushed * 1000 / _outParams.fps;
-      int numAudioFramesToPush = videoPushedinMS * _outParams.audioSampleRate / 1000;
-      int64_t audioTimeAfter = _audioFrame->pts;
-      if ( audioTimeAfter < numAudioFramesToPush )
-      {
-         int n = int( numAudioFramesToPush - audioTimeAfter );
-         _getAudio( leftCh.get(), rightCh.get(), n );
-         _audioAccumulator->pushAudio( leftCh.get(), rightCh.get(), n );
-      }
-#endif
-      i += numVideoFramesPushed;
-   }
-
-#if 0
-   if ( _audioFrame->nb_samples > 0 )
-   {
-      int status = ::avcodec_send_frame( _audioCodecContext, _audioFrame );
-      //_audioFrame->pts += _audioCodecContext->frame_size;
-
-      status = ::avcodec_receive_packet( _audioCodecContext, _audioPacket );
-
-      ++_formatContext->streams[1]->cur_dts;
-
+      int64_t elapsed = _audioFrame->pts - ptsBefore;
+      numAudioSamplesPushed += elapsed;
+      _audioPacket->stream_index = 1;
       status = ::av_interleaved_write_frame( _formatContext, _audioPacket );
+      if ( status < 0 )
+         throw std::runtime_error( "VideoExporter - error writing compressed audio packet" );
    }
-#endif
 
-   if ( _audioCodecContext != nullptr )
-      pushBufferedData( _audioPacket, _audioCodecContext, _formatContext, 1 );
-   pushBufferedData( _videoPacket, _videoCodecContext, _formatContext, 0 );
+   // ... and beyond the inital write_frame() calls...
+   while ( endFrameIndex < videoFrameCount )
+   {
+      _videoFrame->nb_samples = 0;
+      endFrameIndex = pushVideoUntilPacketFilled( endFrameIndex );
 
+      // Write the packet of compressed video
+      _videoPacket->stream_index = 0;
+      int status = ::av_interleaved_write_frame( _formatContext, _videoPacket );
+      if ( status < 0 )
+         throw std::runtime_error( "VideoExporter - error writing compressed video packet" );
+
+      // Process and write some (typically 1 to 3) packets
+      // of audio to keep roughly in sync with video
+      int64_t numAudioSamplesToPush = endFrameIndex * _outParams.audioSampleRate / _outParams.fps - _audioFrame->pts;
+      int64_t numAudioFramesToPush = numAudioSamplesToPush / _audioCodecContext->frame_size;
+      int x = 1;
+      for ( int64_t i = 0; i < numAudioFramesToPush; ++i )
+      {
+         _audioFrame->nb_samples = 0;
+         pushAudioUntilPacketFilled();
+
+         _audioPacket->stream_index = 1;
+         status = ::av_interleaved_write_frame( _formatContext, _audioPacket );
+         if ( status < 0 )
+            throw std::runtime_error( "VideoExporter - error writing compressed audio packet" );
+      }
+   }
+
+   // Finally, clear out any buffered data
+   status = ::avcodec_send_frame( _videoCodecContext, nullptr );
+   if ( status < 0 )
+      throw std::runtime_error( "VideoExporter - error clearing compressed-video cache" );
+   while ( 1 )
+   {
+      status = ::avcodec_receive_packet( _videoCodecContext, _videoPacket );
+      if ( status == AVERROR_EOF )
+         break;
+   }
+
+   status = ::avcodec_send_frame( _audioCodecContext, nullptr );
+   if ( status < 0 )
+      throw std::runtime_error( "VideoExporter - error clearing compressed-audio cache" );
+   while ( 1 )
+   {
+      status = ::avcodec_receive_packet( _audioCodecContext, _audioPacket );
+      if ( status == AVERROR_EOF )
+         break;
+   }
+   status = ::av_interleaved_write_frame( _formatContext, nullptr );
+   if ( status < 0 )
+      throw std::runtime_error( "VideoExporter - error writing cached frame data" );
 }
 
 void VideoExporter::completeExport()
@@ -456,12 +385,23 @@ void VideoExporter::cleanup()
    }
 }
 
-void VideoExporter::pushVideo()
+int VideoExporter::pushVideoUntilPacketFilled( int index )
 {
    int status = 0;
 
+   uint8_t* data[] = { _colorConversionFrame->data[0], nullptr, nullptr, nullptr };
+   int stride[] = { _colorConversionFrame->linesize[0], 0, 0, 0 };
+   int frameHeight = _colorConversionFrame->height;
+   int frameSize = stride[0] * frameHeight;
+
    do
    {
+      _getVideo( data[0], frameSize, index++ );
+
+      int height = ::sws_scale( _swsContext, data, stride, 0, frameHeight, _videoFrame->data, _videoFrame->linesize );
+      if ( height != _videoCodecContext->height )
+         throw std::runtime_error( "VideoExporter - color conversion error" );
+
       status = ::avcodec_send_frame( _videoCodecContext, _videoFrame );
       if ( status < 0 )
          throw std::runtime_error( "VideoExporter - error sending video frame to compresssor" );
@@ -474,21 +414,22 @@ void VideoExporter::pushVideo()
          throw std::runtime_error( "VideoExporter - error receiving compressed video" );
    } while ( status != 0 );
 
-   if ( status == 0 )
-   {
-      _videoPacket->stream_index = 0;
-      status = ::av_interleaved_write_frame( _formatContext, _videoPacket );
-      if ( status < 0 )
-         throw std::runtime_error( "VideoExporter - error writing compressed video frame" );
-   }
+   return index;
 }
 
-void VideoExporter::audioFrameFilledCallback()
+void VideoExporter::pushAudioUntilPacketFilled()
 {
    int status = 0;
 
+   float *dstLeft = reinterpret_cast<float *>( _audioFrame->buf[0]->data );
+   float *dstRight = reinterpret_cast<float *>( _audioFrame->buf[1]->data );
+
    do
    {
+      // todo - handle when we can't get a full frame of audio
+      _getAudio( dstLeft, dstRight, _audioCodecContext->frame_size );
+      _audioFrame->nb_samples = _audioCodecContext->frame_size;
+
       status = ::avcodec_send_frame( _audioCodecContext, _audioFrame );
       if ( status < 0 )
          throw std::runtime_error( "VideoExporter - error sending audio frame to compresssor" );
@@ -496,16 +437,8 @@ void VideoExporter::audioFrameFilledCallback()
 
       status = ::avcodec_receive_packet( _audioCodecContext, _audioPacket );
       if ( status == AVERROR( EAGAIN ) )
-         return; // need more input... safe to bail at this point
+         continue;
       if ( status < 0 )
          throw std::runtime_error( "VideoExporter - error receiving compressed audio" );
    } while ( status != 0 );
-
-   if ( status == 0 )
-   {
-      _audioPacket->stream_index = 1;
-      status = ::av_interleaved_write_frame( _formatContext, _audioPacket );
-      if ( status < 0 )
-         throw std::runtime_error( "VideoExporter - error writing compressed audio frame" );
-   }
 }

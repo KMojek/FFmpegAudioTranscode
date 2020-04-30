@@ -166,12 +166,12 @@ protected:
 
    // Arbitrary 128x96 RGB24 video with audio at 44.1 kHz
    const VideoExporter::Params params = { AV_PIX_FMT_RGB24, 128, 96, 20, 44100 };
-   const int FrameCount = /*100*/ /*80*/ /*40*/ 35;
+   const int FrameCount = 1000; // 50 seconds
 };
 
 TEST_F( VideoExporterIntegrationTest, DISABLED_VideoExporter_Initialize_And_CompleteExport_DoesNotThrow )
 {
-   VideoExporter exporter( tempPath.string(), params, FrameCount );
+   VideoExporter exporter( tempPath.string(), params );
 
    EXPECT_NO_THROW( exporter.initialize() );
 
@@ -180,11 +180,11 @@ TEST_F( VideoExporterIntegrationTest, DISABLED_VideoExporter_Initialize_And_Comp
 
 TEST_F( VideoExporterIntegrationTest, VideoExporter_ExportDummySamplesSucceeds )
 {
-   VideoExporter exporter( tempPath.string(), params, FrameCount );
+   VideoExporter exporter( tempPath.string(), params );
 
    exporter.initialize();
 
-   EXPECT_NO_THROW( exporter.exportEverything() );
+   EXPECT_NO_THROW( exporter.exportEverything( FrameCount ) );
 
    exporter.completeExport();
    int x = 1;
