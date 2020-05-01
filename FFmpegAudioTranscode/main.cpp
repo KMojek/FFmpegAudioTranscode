@@ -3,18 +3,25 @@
 
 #include "stdafx.h"
 
+#include "AudioLoader.h"
+#include "InitFFmpeg.h"
+#include "VideoExporter.h"
+
+#include <gtest/gtest.h>
+
+extern "C"
+{
+#include <libavformat/avformat.h>
+}
+
 #include <algorithm>
 #include <cmath>
+#include <cstring>
+#include <filesystem>
 #include <functional>
 #include <iterator>
 #include <iostream>
 #include <string>
-
-#include <gtest/gtest.h>
-
-#include "AudioLoader.h"
-#include "InitFFmpeg.h"
-
 
 int main( int argc, char **argv )
 {
@@ -140,4 +147,71 @@ TEST_F( FFmpegAudioTranscodeIntegrationTest, WavImport_WorksAsExpected_WithoutPr
 
    auto decodedAudioSize = audioLoader.processedAudio().size();
    EXPECT_EQ( decodedAudioSize, expectedSize );
+}
+
+
+class VideoExporterIntegrationTest : public ::testing::Test
+{
+protected:
+   void SetUp() override
+   {
+      tempPath = std::filesystem::temp_directory_path() / "out.mp4";
+   }
+
+   void TearDown() override
+   {
+      std::filesystem::remove( tempPath );
+   }
+
+   std::filesystem::path tempPath;
+
+   // Arbitrary 128x96 RGB24 20-fps video with audio at 44.1 kHz
+   const VideoExporter::Params params = { AV_PIX_FMT_RGB24, 128, 96, 20, 44100 };
+   const int LengthInSeconds = 60;
+   const int FrameCount = params.fps * LengthInSeconds;
+};
+
+TEST_F( VideoExporterIntegrationTest, VideoExporter_Initialize_And_CompleteExport_DoesNotThrow )
+{
+   VideoExporter exporter( tempPath.string(), params );
+
+   EXPECT_NO_THROW( exporter.initialize() );
+
+   EXPECT_NO_THROW( exporter.completeExport() );
+}
+
+TEST_F( VideoExporterIntegrationTest, VideoExporter_ExportDummySamplesSucceeds )
+{
+   VideoExporter exporter( tempPath.string(), params );
+
+   exporter.initialize();
+
+   EXPECT_NO_THROW( exporter.exportFrames( FrameCount ) );
+
+   exporter.completeExport();
+}
+
+namespace
+{
+   int numCalls = 0;
+   bool dummyGetAudio( float* leftCh, float* rightCh, int frameSize )
+   {
+      std::memset( leftCh, 0, frameSize * sizeof( float ) );
+      std::memset( rightCh, 0, frameSize * sizeof( float ) );
+
+      ++numCalls;
+      return true;
+   }
+}
+
+TEST_F( VideoExporterIntegrationTest, VideoExporter_ExportVideoOnlySucceeds )
+{
+   VideoExporter exporter( tempPath.string(), params, true );
+   exporter.setGetAudioCallback( dummyGetAudio );
+
+   exporter.initialize();
+   exporter.exportFrames( FrameCount );
+   exporter.completeExport();
+
+   EXPECT_EQ( numCalls, 0 );
 }
