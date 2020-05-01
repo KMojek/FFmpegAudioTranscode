@@ -48,7 +48,6 @@ namespace
             *ptr++ = 0xff;
          }
       }
-
       return true;
    }
 
@@ -63,6 +62,17 @@ namespace
 
       return true;
    }
+
+   bool queryForCancel()
+   {
+      return false;
+   }
+
+   void progressReporter( int )
+   {
+
+   }
+
 
    //void my_av_log_callback( void* ptr, int level, const char*fmt, va_list vargs )
    //{
@@ -95,6 +105,8 @@ VideoExporter::VideoExporter( const std::string& outPath, const Params& inParams
 
    _getVideo = getVideo;
    _getAudio = getAudio;
+   _queryForCancel = queryForCancel;
+   _progressReporter = progressReporter;
 
    //::av_log_set_callback( my_av_log_callback );
 }
@@ -103,7 +115,7 @@ VideoExporter::~VideoExporter()
 {
    cleanup();
 
-   ::av_log_set_callback( nullptr );
+   //::av_log_set_callback( nullptr );
 }
 
 void VideoExporter::initialize()
@@ -290,8 +302,19 @@ void VideoExporter::exportVideoAndAudio( int videoFrameCount )
    }
 
    // ... and beyond the inital write_frame() calls...
-   while ( endFrameIndex < videoFrameCount )
+   while ( endFrameIndex <= videoFrameCount )
    {
+      // Some housekeeping for cancel and progress reporting
+      if ( _queryForCancel != nullptr && _queryForCancel() )
+      {
+         ::avio_closep( &_formatContext->pb );
+         return;
+      }
+      double exportPercentage = double(endFrameIndex) / videoFrameCount;
+      int progressAsInt = int( 100 * exportPercentage );
+      if ( _progressReporter != nullptr )
+         _progressReporter( progressAsInt );
+
       _videoFrame->nb_samples = 0;
       endFrameIndex = pushVideoUntilPacketFilled( endFrameIndex );
 
