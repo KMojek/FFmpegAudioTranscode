@@ -36,7 +36,7 @@ public:
    // Callback to allow the exporter to report export progress to the client (0-100 scale)
    typedef std::function< void( int ) > ProgressReportCb;
 
-   VideoExporter( const std::string& outPath, const Params& inParams );
+   VideoExporter( const std::string& outPath, const Params& inParams, bool videoOnly = false );
    virtual ~VideoExporter();
 
    void setGetVideoCallback( GetVideoFrameCb fn ) { _getVideo = fn; }
@@ -45,7 +45,7 @@ public:
    void setProgressReportCallback( ProgressReportCb fn ) { _progressReporter = fn; }
 
    void initialize();
-   void exportVideoAndAudio( int videoFrameCount );
+   void exportFrames( int videoFrameCount );
    void completeExport();
 
 protected:
@@ -61,6 +61,7 @@ protected:
 
    const std::string       _path;
    const Params            _inParams;
+   const bool              _videoOnly;
    Params                  _outParams;
    int64_t                 _ptsIncrement = 0LL;
    SwsContext*             _swsContext = nullptr;

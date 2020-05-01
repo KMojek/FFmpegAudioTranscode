@@ -54,11 +54,8 @@ namespace
    // initialize to silence
    bool getAudio( float* leftCh, float *rightCh, int frameSize )
    {
-      for ( int i = 0; i < frameSize; ++i )
-      {
-         leftCh[i] = 0.f;
-         rightCh[i] = 0.f;
-      }
+      std::memset( leftCh, 0, frameSize * sizeof( float ) );
+      std::memset( rightCh, 0, frameSize * sizeof( float ) );
 
       return true;
    }
@@ -84,9 +81,10 @@ namespace
    //}
 }
 
-VideoExporter::VideoExporter( const std::string& outPath, const Params& inParams/*, uint32_t frameCount*/ )
+VideoExporter::VideoExporter( const std::string& outPath, const Params& inParams, bool videoOnly/*=false*/ )
    : _path( outPath )
    , _inParams( inParams )
+   , _videoOnly( videoOnly )
 {
    if ( inParams.pfmt != AV_PIX_FMT_RGB24 )
       throw std::runtime_error( "VideoExporter - expecting RGB24 input!" );
@@ -272,7 +270,7 @@ void VideoExporter::initializePackets()
    ::av_init_packet( _audioPacket );
 }
 
-void VideoExporter::exportVideoAndAudio( int videoFrameCount )
+void VideoExporter::exportFrames( int videoFrameCount )
 {
    // Accumulate the initial packet of compressed video (actually 35 video frames)
    _videoFrame->nb_samples = 0;
@@ -285,20 +283,23 @@ void VideoExporter::exportVideoAndAudio( int videoFrameCount )
       throw std::runtime_error( "VideoExporter - error writing initial compressed video packet" );
 
    // We'll need to push a bunch of audio packets through in order to "catch up" to the video
-   int64_t numAudioSamplesToPush = endFrameIndex * _outParams.audioSampleRate / _outParams.fps;
-   for ( int64_t numAudioSamplesPushed = 0; numAudioSamplesPushed < numAudioSamplesToPush; )
+   if ( !_videoOnly )
    {
-      // For AAC, first packet will be 2048 samples; always 1024 after that
-      _audioFrame->nb_samples = 0;
-      int64_t ptsBefore = _audioFrame->pts;
-      pushAudioUntilPacketFilled();
+      int64_t numAudioSamplesToPush = endFrameIndex * _outParams.audioSampleRate / _outParams.fps;
+      for ( int64_t numAudioSamplesPushed = 0; numAudioSamplesPushed < numAudioSamplesToPush; )
+      {
+         // For AAC, first packet will be 2048 samples; always 1024 after that
+         _audioFrame->nb_samples = 0;
+         int64_t ptsBefore = _audioFrame->pts;
+         pushAudioUntilPacketFilled();
 
-      int64_t elapsed = _audioFrame->pts - ptsBefore;
-      numAudioSamplesPushed += elapsed;
-      _audioPacket->stream_index = 1;
-      status = ::av_interleaved_write_frame( _formatContext, _audioPacket );
-      if ( status < 0 )
-         throw std::runtime_error( "VideoExporter - error writing compressed audio packet" );
+         int64_t elapsed = _audioFrame->pts - ptsBefore;
+         numAudioSamplesPushed += elapsed;
+         _audioPacket->stream_index = 1;
+         status = ::av_interleaved_write_frame( _formatContext, _audioPacket );
+         if ( status < 0 )
+            throw std::runtime_error( "VideoExporter - error writing compressed audio packet" );
+      }
    }
 
    // ... and beyond the inital write_frame() calls...
@@ -325,17 +326,20 @@ void VideoExporter::exportVideoAndAudio( int videoFrameCount )
          throw std::runtime_error( "VideoExporter - error writing compressed video packet" );
 
       // Process and write some (typically 1 to 3) packets of audio to keep roughly in sync with video
-      int64_t numAudioSamplesToPush = endFrameIndex * _outParams.audioSampleRate / _outParams.fps - _audioFrame->pts;
-      int64_t numAudioFramesToPush = numAudioSamplesToPush / _audioCodecContext->frame_size;
-      for ( int64_t i = 0; i < numAudioFramesToPush; ++i )
+      if ( !_videoOnly )
       {
-         _audioFrame->nb_samples = 0;
-         pushAudioUntilPacketFilled();
+         int64_t numAudioSamplesToPush = endFrameIndex * _outParams.audioSampleRate / _outParams.fps - _audioFrame->pts;
+         int64_t numAudioFramesToPush = numAudioSamplesToPush / _audioCodecContext->frame_size;
+         for ( int64_t i = 0; i < numAudioFramesToPush; ++i )
+         {
+            _audioFrame->nb_samples = 0;
+            pushAudioUntilPacketFilled();
 
-         _audioPacket->stream_index = 1;
-         status = ::av_interleaved_write_frame( _formatContext, _audioPacket );
-         if ( status < 0 )
-            throw std::runtime_error( "VideoExporter - error writing compressed audio packet" );
+            _audioPacket->stream_index = 1;
+            status = ::av_interleaved_write_frame( _formatContext, _audioPacket );
+            if ( status < 0 )
+               throw std::runtime_error( "VideoExporter - error writing compressed audio packet" );
+         }
       }
    }
 
@@ -357,20 +361,23 @@ void VideoExporter::exportVideoAndAudio( int videoFrameCount )
       }
    }
 
-   status = ::avcodec_send_frame( _audioCodecContext, nullptr );
-   if ( status < 0 )
-      throw std::runtime_error( "VideoExporter - error clearing compressed-audio cache" );
-   while ( 1 )
+   if ( !_videoOnly )
    {
-      status = ::avcodec_receive_packet( _audioCodecContext, _audioPacket );
-      if ( status == AVERROR_EOF )
-         break;
-      if ( status == 0 )
+      status = ::avcodec_send_frame( _audioCodecContext, nullptr );
+      if ( status < 0 )
+         throw std::runtime_error( "VideoExporter - error clearing compressed-audio cache" );
+      while ( 1 )
       {
-         _audioPacket->stream_index = 1;
-         status = ::av_interleaved_write_frame( _formatContext, _audioPacket );
-         if ( status < 0 )
-            throw std::runtime_error( "VideoExporter - error writing cached audio frame data" );
+         status = ::avcodec_receive_packet( _audioCodecContext, _audioPacket );
+         if ( status == AVERROR_EOF )
+            break;
+         if ( status == 0 )
+         {
+            _audioPacket->stream_index = 1;
+            status = ::av_interleaved_write_frame( _formatContext, _audioPacket );
+            if ( status < 0 )
+               throw std::runtime_error( "VideoExporter - error writing cached audio frame data" );
+         }
       }
    }
 }
