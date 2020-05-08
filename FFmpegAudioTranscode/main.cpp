@@ -215,3 +215,15 @@ TEST_F( VideoExporterIntegrationTest, VideoExporter_ExportVideoOnlySucceeds )
 
    EXPECT_EQ( numCalls, 0 );
 }
+TEST_F( VideoExporterIntegrationTest, VideoExporter_ExportWithOddHeightSucceeds )
+{
+   const VideoExporter::Params myParams = { AV_PIX_FMT_RGB24, 904, 647, 20, 44100 };
+
+   VideoExporter exporter( tempPath.string(), myParams, true );
+
+   exporter.initialize();
+   exporter.exportFrames( FrameCount );
+   exporter.completeExport();
+
+   // currently, need to manually look at output here :(
+}
